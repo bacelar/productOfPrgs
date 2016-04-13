@@ -1,0 +1,176 @@
+\documentclass{llncs}
+
+
+
+\title{Declassification aware product construction}
+
+\author{ctverif} 
+
+
+\usepackage{color}
+\usepackage{enumerate}
+\usepackage{paralist}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathpartir}
+
+
+% States
+\newcommand{\llbracket}{[\![}
+\newcommand{\rrbracket}{]\!]}
+\newcommand{\semantics}[1]{{\llbracket{#1}\rrbracket}}
+
+
+
+% STUFF
+\newcommand{\Blue}{\color{Blue}}
+\newcommand{\blue}{\color{blue}}
+\newcommand{\Red}{\color{Red}}
+\newcommand{\red}{\color{red}}
+\newcommand{\Lc}{\Red}
+\newcommand{\Rc}{\blue\bf}
+
+\newcommand{\Stmt}{\mathsf{Stmt}}
+\newcommand{\States}{\mathcal{S}}
+\newcommand{\powerset}{\mathcal{P}}
+
+\newcommand{\pprod}[3]{#1 \times  #2\longrightarrow #3}
+
+\newcommand{\gassert}[1]{\left\{{#1}\right\}}
+% Variables
+\newcommand{\Var}{\mathcal{V}}
+\newcommand{\AVar}{\mathcal{A}}
+
+
+\newcommand{\wassign}[2]{#1 := #2}
+\newcommand{\wawrite}[3]{#1 [#2] := #3}
+\newcommand{\waread}[3]{#1 := #2 [#3]}
+\newcommand{\wskip}{\mathsf{skip}}
+\newcommand{\wseq}[2]{{#1};{#2}}
+\newcommand{\wwhile}[2]{\mathsf{while}\ {#1}\ \mathsf{do}\ {#2}}
+\newcommand{\wif}[3]{\mathsf{if\ }#1\ \mathsf{then}\ #2\ \mathsf{else}\ #3}
+\newcommand{\wift}[2]{\mathsf{if\ }#1\ \mathsf{then}\ #2\ \mathsf{fi}}
+\newcommand{\wassert}[1]{\mathsf{assert}~#1}
+\newcommand{\wassume}[1]{\mathsf{assume}~#1}
+
+\newcommand{\slabel}[2]{{[#1]^{#2}}}
+\newcommand{\wact}[1]{\mathsf{w}(#1)}
+\newcommand{\ract}[1]{\mathsf{r}(#1)}
+
+\newcommand{\wupdate}[2]{[#1 := #2]}
+
+\newcommand{\codescale}{.9}
+
+
+\begin{document}
+\maketitle
+
+\newcommand{\eff}{\mathsf{false}}
+\newcommand{\ett}{\mathsf{true}}
+\newcommand{\sideL}{\mathtt{1}}
+\newcommand{\sideR}{\mathtt{2}}
+
+\newcommand{\side}[2]{#2\{\!#1\!\}}
+\newcommand{\lside}[1]{\side{\sideL}{#1}}
+\newcommand{\rside}[1]{\side{\sideR}{#1}}
+
+\newcommand{\X}{\mathsf{\_}} % don't care side
+\newcommand{\vside}{\mathit{lr}} % a given side
+
+\newcommand{\nil}{\epsilon}
+\newcommand{\cons}[2]{#1::#2}
+
+\newcommand{\ok}{\mathsf{ok}}
+\newcommand{\oksc}{\mathsf{okSC}}
+\newcommand{\countL}{\mathsf{countL}}
+\newcommand{\countR}{\mathsf{countR}}
+\newcommand{\leakL}[1]{\mathsf{leakL}[#1]}
+
+\newcommand{\recordL}[2]{\wassign{\leakL{#1}}{#2}}
+\newcommand{\checkL}[3]{\wassign{#1}{#1 \wedge (#2=#3)}}
+
+\newcommand{\RecLeak}[2]{\mathrm{ProcLeak}^{\!#1}\!(#2)}	%receives a list of expressions
+\newcommand{\EqSeq}[2]{\mathrm{EqSeq}(#1,#2)}	%receives two lists of expressions of equal length
+\newcommand{\Mirror}[2]{\mathrm{Mirror}^{#1}\!(#2)}		%receives a program
+\newcommand{\SelfComp}[1]{\mathrm{SelfComp}(#1)}		%receives a program
+
+\begin{figure}[thb]
+  \centering
+  \begin{align*}
+    \SelfComp{s} &= \wseq{\wassign{\oksc}{\ett}}{\wseq{\wassign{\countL}{\mathtt{0}}}{\wassign{\countR}{\mathtt{0}}}}; \\
+    &\quad\ \wseq{\Mirror{\sideL}{s}}{\Mirror{\sideR}{s}}; \\
+    &\quad\ \checkL{\oksc}{\countL}{\countR} \\
+    & \\
+    \Mirror{\vside}{\wskip} &= \wskip \\
+    \Mirror{\vside}{\wassume{e}} &= \wassume{\side{\vside}{e}} \\
+    \Mirror{\vside}{\wassert{e}} &= \wassert{\side{\vside}{e}} \\
+    \Mirror{\vside}{\wassign{x}{e}} &= \wseq{\wseq{\RecLeak{\vside}{L(\side{\vside}{x})}}{\RecLeak{\vside}{L(\side{\vside}{e})}}}
+                                            {\wassign{\side{\vside}{x}}{\side{\vside}{e}}} \\
+    \Mirror{\vside}{\wseq{s_1}{s_2}} &= \wseq{\Mirror{\vside}{s_1}}{\Mirror{\vside}{s_2}} \\
+    \Mirror{\vside}{\wif{b}{s_1}{s_2}} &= \wseq{\RecLeak{\vside}{L(\side{\vside}{b})}}{\RecLeak{\vside}{\side{\vside}{b}}}; \\
+    &\quad\ \wif{\side{\vside}{b}}{\Mirror{\vside}{s_1}}{\Mirror{\vside}{s_2}} \\
+    \Mirror{\vside}{\wwhile{b}{s}} &= \wseq{\RecLeak{\vside}{L(\side{\vside}{b})}}{\RecLeak{\vside}{\side{\vside}{b}}}; \\
+    &\quad\ \wwhile{\side{\vside}{b}}{\{\wseq{\Mirror{\vside}{s}}
+                                             {\wseq{\RecLeak{\vside}{L(\side{\vside}{b})}}{\RecLeak{\vside}{\side{\vside}{b}}}}\}} \\
+    & \\
+    \RecLeak{\vside}{\nil} &= \wskip \\
+    \RecLeak{\sideL}{\cons{x}{xs}} &= \wseq{\wseq{\recordL{\countL}{x}}{\wassign{\countL}{\countL+1}}}
+                                   {\RecLeak{\sideL}{xs}} \\
+    \RecLeak{\sideR}{\cons{x}{xs}} &= \wseq{\wseq{\checkL{\oksc}{\leakL{\countR}}{x}}{\wassign{\countR}{\countR+1}}}
+                                   {\RecLeak{\sideR}{xs}} \\
+  \end{align*}
+  \caption{\textbf{Leakage-aware Self-Composition}.
+    $\oksc, \countL, \countR$ are fresh scalar variables and $\leakL$
+    is a fresh array variable. The program is \emph{secure} if $\oksc$
+    is $\ett$ at the final state. $L(-)$ denotes the preleakage of an
+    expression.}
+  \label{fig:self-comp}
+\end{figure}
+
+
+\newcommand{\FullProduct}[1]{\mathrm{FullProduct}(#1)}
+\newcommand{\fprod}[1]{\mathrm{ProductTrf}(#1)}
+\newcommand{\chkL}[1]{\wassign{\mathsf{ok}}{\mathsf{ok}\wedge \EqSeq{L(\lside{#1})}{L(\rside{#1})}}}
+\newcommand{\chkT}[1]{\wassign{\mathsf{ok}}{\mathsf{ok}\wedge \lside{#1}=\rside{#1}}}
+
+\begin{figure}[thb]
+  \centering
+  \begin{align*}
+    \FullProduct{s} &=
+     \wseq{\wassign{\ok}{\mathsf{true}}}{\wassign{\oksc}{\mathsf{true}}}; \\
+    &\quad\ \wseq{\wassume{\EqSeq{\lside{I}}{\rside{I}}}}{\fprod{s}}; \\
+    &\quad\ \wseq{\wassume{\EqSeq{\lside{O}}{\rside{O}}}}{\wassert{(\ok\wedge \oksc)}} \\
+    & \\
+    \fprod{\wskip} &=  \wskip \\
+    \fprod{\wassume{e}} &=
+     \wseq{\wassume{\lside{e}}}{\wassume{\rside{e}}} \\
+    \fprod{\wassert{e}} &=
+     \wseq{\wassert{\lside{e}}}{\wassert{\rside{e}}} \\
+    \fprod{\wassign{x}{e}} &=
+      \chkL{x}; \\
+     &\quad\ \chkL{e};\\
+     &\quad\ \wseq{\wassign{\lside{x}}{\lside{e}}}
+                  {\wassign{\rside{x}}{\rside{e}}} \\
+    \fprod{\wseq{s_1}{s_2}} &= 
+      \wseq{\fprod{s_1}}{\fprod{s_2}} \\
+    \fprod{\wif{b}{s_1}{s_2}} &=
+      \chkL{b}; \\
+     &\quad\ \chkT{b}; \\
+     &\quad\ \mathsf{if}\ ({\mathsf{ok}}) \\
+     &\qquad \mathsf{then}\ \{ {\wif{\lside{b}}{\fprod{s_1}}{\fprod{s_2}}} \}\\
+     &\qquad \mathsf{else}\ \SelfComp{\wif{b}{s_1}{s_2}}\\
+    \fprod{\wwhile{b}{s}} &=
+      \wseq{\chkL{b}}{\chkT{b}}; \\
+     &\quad\ \mathsf{while}\ (\mathsf{ok}\wedge \lside{b}) \\
+     &\qquad\ \{\wseq{\fprod{s}}{\wseq{\chkL{b}}{\chkT{b}}}\}; \\
+     &\quad\ \SelfComp{\wwhile{(!\ok\wedge b)}{s}} \\
+    & \\
+    \EqSeq{\nil}{\nil} &= \ett \\
+    \EqSeq{\cons{x}{xs}}{\cons{y}{ys}} &= (x=y) \wedge \EqSeq{xs}{ys} \\
+  \end{align*}
+  \caption{\textbf{Full-product construction.}}
+  \label{fig:fullprod}
+\end{figure}
+
+
+\end{document}
