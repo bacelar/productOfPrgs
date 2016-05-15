@@ -361,7 +361,7 @@ split; first by rewrite (eqP EqS12v).
 by move => e; rewrite (eqP (EqS12a e)).
 Qed.
 
-(* State equality *)
+(* State equality on results *)
 Definition eqstateOpt (s1 s2: option State): Prop :=
  match s1, s2 with
  | None, None => True
@@ -386,42 +386,61 @@ move => [st1|] [st2|] [st3|] /= EqS12 EqS23 //.
 by apply eqstate_trans with st2.
 Qed.
 
-(* State equivalence on a restricted set of variables *)
-Definition VarRestr:= ident -> (bool*bool).
+(* State equality on results of step-indexed evaluation function *)
+Definition feqstate (s1 s2: option ((option State)*seq Z)): Prop :=
+ match s1, s2 with
+ | None, None => True
+ | Some st1, Some st2 => eqstateOpt st1.1 st2.1 /\ st1.2 = st2.2
+ | _, _ => False
+ end.
+
+Lemma feqstate_refl: forall st, feqstate st st.
+Proof. by move => [st|]; split => //=; apply eqstateOpt_refl. Qed.
+
+Lemma feqstate_sym: forall st1 st2, 
+ feqstate st1 st2 -> feqstate st2 st1.
+Proof. 
+move => [st1|] [st2|] //= [EqS EqL]; split; last by symmetry.
+by apply eqstateOpt_sym.
+Qed.
+
+Lemma feqstate_trans: forall st1 st2 st3,
+ feqstate st1 st2 -> feqstate st2 st3 -> feqstate st1 st3.
+Proof.
+move => [st1|] [st2|] [st3|] //= [Es12 El12] [Es23 El23]; split.
+ by apply eqstateOpt_trans with st2.1.
+by rewrite El12.
+Qed.
+
+(* State equivalence on a restricted (finite) set of variables
+  Remark: for the sake of simplicity, we restrict variable restrictions
+  to scalar variables
+*)
+Definition VarRestr:= seq ident.
 
 Definition eqstateR (lowVar:VarRestr) (st1 st2:State) :=
  forall id,
-   ((lowVar id).1 -> st1.1 id == st2.1 id)
-   /\ ((lowVar id).2 -> forall i, st1.2 (id,i) == st2.2 (id,i)).
+   (id \in lowVar -> st1.1 id == st2.1 id).
 
 Lemma eqstateR_refl: forall lowVars st, eqstateR lowVars st st.
-Proof. 
-rewrite /eqstateR => lV st x; split.
- by case: (lV x).1.
-by case: (lV x).2.
-Qed.
+Proof. by rewrite /eqstateR => lV st x Hx. Qed.
 
 Lemma eqstateR_sym: forall lowVars st1 st2, 
  eqstateR lowVars st1 st2 -> eqstateR lowVars st2 st1.
 Proof. 
-rewrite /eqstateR => lV st1 st2 EqS x.
-move: {EqS} (EqS x) => [EqS1 EqS2]; split => Hx.
- by rewrite eq_sym; apply EqS1.
-by move=> z; rewrite eq_sym; apply EqS2.
+rewrite /eqstateR => lV st1 st2 EqS x Hx.
+by rewrite eq_sym; apply EqS.
 Qed.
 
 Lemma eqstateR_trans: forall lowVars st1 st2 st3,
  eqstateR lowVars st1 st2 -> eqstateR lowVars st2 st3
  -> eqstateR lowVars st1 st3.
 Proof.
-rewrite /eqstateR => lV st1 st2 st3 EqS12 EqS23 x.
-move: {EqS12 EqS23} (EqS12 x) (EqS23 x) => [EqS121 EqS122] [EqS231 EqS232].
-split => Hx.
- by rewrite (eqP (EqS121 Hx)) (eqP (EqS231 Hx)).
-by move=> z; rewrite (eqP (EqS122 Hx z)) (eqP (EqS232 Hx z)).
+rewrite /eqstateR => lV st1 st2 st3 EqS12 EqS23 x Hx.
+by rewrite (eqP (EqS12 _ Hx)) (eqP (EqS23 _ Hx)).
 Qed.
 
-Definition lowVars0 (i:ident) := (false,false).
+Definition lowVars0 : VarRestr := [::].
 
 End StateDef.
 
@@ -437,26 +456,28 @@ Add Parametric Relation (lowVars:VarRestr) : State (@eqstateR lowVars)
  transitivity proved by (@eqstateR_trans lowVars)
  as eqstateR_equiv.
 
+Add Parametric Morphism (lowVars:VarRestr) : (eqstateR lowVars)
+ with signature eqstate ==> eqstate ==> iff
+ as eqstateR_morph.
+Proof. 
+rewrite /eqstateR => s1 s1' Es1 s2 s2' Es2.
+split=> H x Hx; move: {H Es1 Es2} (H x Hx) (Es1 x) (Es2 x)
+ => /eqP H [/eqP H1 _] [/eqP H2 _].
+ by rewrite -H1 -H2 H.
+by rewrite H1 H2 H.
+Qed.
+
 Add Parametric Relation : (option State) eqstateOpt
  reflexivity proved by eqstateOpt_refl
  symmetry proved by eqstateOpt_sym
  transitivity proved by eqstateOpt_trans
  as eqstateOpt_equiv.
 
-Add Parametric Morphism (lowVars:VarRestr) : (eqstateR lowVars)
- with signature eqstate ==> eqstate ==> iff
- as eqstateR_morph.
-Proof. 
-rewrite /eqstateR => s1 s1' Es1 s2 s2' Es2.
-split=> H x; move: {H Es1 Es2} (H x) (Es1 x) (Es2 x)
-=> [H1 H2] [/eqP Es11 Es12] [/eqP Es21 Es22].
- split => Hx.
-  by rewrite -Es11 -Es21; apply H1.
- by move=> z; rewrite -(eqP (Es12 z)) -(eqP (Es22 z)); apply H2.
-split => Hx.
- by rewrite Es11 Es21; apply H1.
-by move=> z; rewrite (eqP (Es12 z)) (eqP (Es22 z)); apply H2.
-Qed.
+Add Parametric Relation : (option ((option State)*seq Z)) feqstate
+ reflexivity proved by feqstate_refl
+ symmetry proved by feqstate_sym
+ transitivity proved by feqstate_trans
+ as feqstate_equiv.
 
 (** * Expression Evaluation *)
 Section ExprSemantics.
@@ -629,10 +650,10 @@ Qed.
 *)
 Definition LeakFun := expr ops -> seq (expr ops).
 
-Definition Leakage : eqType := [eqType of seq (bool + Z)].
+Definition Leakage : eqType := [eqType of seq Z].
 
 Definition leak_expr (lFun:LeakFun) st e : Leakage :=
- map (fun e => inr (eval_expr st e)) (lFun e).
+ map (fun e => eval_expr st e) (lFun e).
 
 Lemma eqleak_split: forall lFun st1 st2 e1 l1 l2,
  (leak_expr lFun st1 e1 ++ l1
@@ -672,7 +693,7 @@ Add Parametric Morphism (ops:opSig) (lFun:LeakFun ops): (@leak_expr _ lFun)
  as leak_expr_morph.
 Proof. 
 move => st1 st2 EqS e; rewrite /leak_expr.
-apply eq_map => x; f_equal.
+apply eq_map => x.
 by rewrite EqS.
 Qed.
 
@@ -683,18 +704,18 @@ Variable ops: opSig.
 Variable lFun : LeakFun ops.
 
 Inductive eval_cmd : State -> cmd ops -> Leakage -> option State -> Prop :=
- | eval_Skip: forall st st',
-    eqstate st st' -> eval_cmd st (@Skip ops) [::] (Some st')
- | eval_AssumeT: forall st st' e,
-    eqstate st st' -> isTrue_expr st e ->
-    eval_cmd st (Assume e) [::] (Some st')
- | eval_AssertF: forall st st' e,
-    eqstate st st' -> isTrue_expr st e ->
-    eval_cmd st (Assert e) [::] (Some st')
+ | eval_Skip: forall st,
+    eval_cmd st (@Skip ops) [::] (Some st)
+ | eval_AssumeT: forall st e,
+    isTrue_expr st e ->
+    eval_cmd st (Assume e) [::] (Some st)
+ | eval_AssertF: forall st e,
+    isTrue_expr st e ->
+    eval_cmd st (Assert e) [::] (Some st)
  | eval_AssertT: forall st e,
     ~~(isTrue_expr st e) -> eval_cmd st (Assert e) [::] None
  | eval_Assign: forall st st' l e,
-    eqstate (updLValue st l (eval_expr st e)) st' ->
+    st' = (updLValue st l (eval_expr st e)) ->
     eval_cmd st (Assign l e) (leak_expr lFun st (ValOf l)++leak_expr lFun st e)
                 (Some st')
  | eval_SeqS: forall st1 st2 st3 c1 c2 l1 l2,
@@ -704,28 +725,27 @@ Inductive eval_cmd : State -> cmd ops -> Leakage -> option State -> Prop :=
     eval_cmd st1 c1 l1 None -> eval_cmd st1 (Seq c1 c2) l1 None
  | eval_IfT: forall st1 st2 b c1 c2 l1,
     isTrue_expr st1 b -> eval_cmd st1 c1 l1 st2 ->
-    eval_cmd st1 (If b c1 c2) (leak_expr lFun st1 b ++ (inl true)::l1) st2
+    eval_cmd st1 (If b c1 c2) (leak_expr lFun st1 b ++ (1::l1)) st2
  | eval_IfF: forall st1 st2 b c1 c2 l2,
     ~~(isTrue_expr st1 b) -> eval_cmd st1 c2 l2 st2 ->
-    eval_cmd st1 (If b c1 c2) (leak_expr lFun st1 b ++ (inl false)::l2) st2
+    eval_cmd st1 (If b c1 c2) (leak_expr lFun st1 b ++ (0::l2)) st2
  | eval_WhileTS: forall st1 st2 st3 b c l1 l2,
     isTrue_expr st1 b -> 
     eval_cmd st1 c l1 (Some st2) ->
     eval_cmd st2 (While b c) l2 st3 ->
-    eval_cmd st1 (While b c) (leak_expr lFun st1 b ++ (inl true)::l1++l2) st3
+    eval_cmd st1 (While b c) (leak_expr lFun st1 b ++ 1::l1++l2) st3
  | eval_WhileTN: forall st1 b c l,
     isTrue_expr st1 b -> 
     eval_cmd st1 c l None ->
-    eval_cmd st1 (While b c) (leak_expr lFun st1 b ++ (inl true)::l) None
- | eval_WhileF: forall st st' b c,
+    eval_cmd st1 (While b c) (leak_expr lFun st1 b ++ 1::l) None
+ | eval_WhileF: forall st b c,
     ~~(isTrue_expr st b) ->
-    eqstate st st' ->
-    eval_cmd st (While b c) (leak_expr lFun st b ++ [:: (inl false)]) (Some st').
+    eval_cmd st (While b c) (leak_expr lFun st b ++ [:: 0]) (Some st).
 
 (** Inversion lemmas *)
 Lemma eval_cmd_SkipI: forall s1 l s2,
  eval_cmd s1 (@Skip ops) l s2 -> 
- eqstateOpt (Some s1) s2 /\ l=[::].
+ s2 = (Some s1) /\ l=[::].
 Proof.
 move=> s1 l s2.
 move: {1 3}(@Skip ops) (Logic.eq_refl (@Skip ops)) => c' E H.
@@ -734,24 +754,23 @@ Qed.
 
 Lemma eval_cmd_AssumeI: forall e s1 l s2,
  eval_cmd s1 (Assume e) l s2 -> 
- [/\ isTrue_expr s1 e, eqstateOpt (Some s1) s2 & l=[::] ].
+ [/\ isTrue_expr s1 e, s2 = Some s1 & l=[::] ].
 Proof.
 move=> e s1 l s2.
 move: {1 3}(Assume _) (Logic.eq_refl (Assume e)) => c' E H.
 case: {c' s1 l s2} H E => //=.
-by move=> s1 s2 e' Es Ee [<-].
+by move=> s1 e' Es [<-].
 Qed.
 
 Lemma eval_cmd_AssertSI: forall e s1 l s2,
  eval_cmd s1 (Assert e) l (Some s2) -> 
- [/\ isTrue_expr s1 e, eqstate s1 s2 & l=[::] ].
+ [/\ isTrue_expr s1 e, s2 = s1 & l=[::] ].
 Proof.
 move=> e s1 l s2.
-change (eqstate s1 s2) with (eqstateOpt (Some s1) (Some s2)).
 move: {1 3}(Assert _) (Logic.eq_refl (Assert e)) => c' Ec.
 move: {1 3}(Some s2) (Logic.eq_refl (Some s2)) => s' Es H.
 case: {c' s' s1 s2 l} H Ec s2 Es => //=.
-by move=> s1 s2 e' Es Te' [<-] s' [<-].
+by move=> s1 e' Te' [<-] s' [<-].
 Qed.
 
 Lemma eval_cmd_AssertNI: forall e s1 l,
@@ -767,7 +786,7 @@ Qed.
 
 Lemma eval_cmd_AssignI: forall x e s1 l s2,
  eval_cmd s1 (Assign x e) l s2 -> 
- [/\ eqstateOpt s2 (Some (updLValue s1 x (eval_expr s1 e))) 
+ [/\ (s2 = Some (updLValue s1 x (eval_expr s1 e)))
      & l=leak_expr lFun s1 (ValOf x) ++ leak_expr lFun s1 e ].
 Proof.
 move=> x e s1 l s2.
@@ -775,7 +794,7 @@ move: {1 3}(Assign _) (Logic.eq_refl (Assign x e)) => c' Ec.
 move: {1 3}(Some _) (Logic.eq_refl (Some (updLValue s1 x (eval_expr s1 e)))) => s' Es H.
 case: {c' s1 s2 l} H Ec Es=> //=.
 move => s1 s2 x' e' Es [<- <-] ->; split => //.
-by symmetry.
+by f_equal.
 Qed.
 
 Lemma eval_cmd_SeqI: forall c1 c2 s1 l s2,
@@ -824,7 +843,7 @@ Lemma eval_cmd_IfI: forall b c1 c2 s1 l s2,
   (if isTrue_expr s1 b
   then eval_cmd s1 c1 l' s2
   else eval_cmd s1 c2 l' s2)
-  /\ l = leak_expr lFun s1 b ++ inl (isTrue_expr s1 b) :: l'.
+  /\ l = leak_expr lFun s1 b ++ (if isTrue_expr s1 b then 1 else 0) :: l'.
 Proof.
 move=> b c1 c2 s1 l s2.
 move: {1 3}(If _ _ _) (Logic.eq_refl (If b c1 c2)) => c' Ec H.
@@ -841,8 +860,8 @@ Lemma eval_cmd_WhileSI: forall b c s1 l s2,
  then exists s' l1' l2',
         [/\ eval_cmd s1 c l1' (Some s'),
             eval_cmd s' (While b c) l2' (Some s2)
-          & l = leak_expr lFun s1 b ++ inl true :: l1' ++ l2']
- else eqstate s1 s2 /\ l = leak_expr lFun s1 b ++ [:: inl false].
+          & l = leak_expr lFun s1 b ++ 1 :: l1' ++ l2']
+ else eqstate s1 s2 /\ l = leak_expr lFun s1 b ++ [:: 0].
 Proof.
 move=> b c s1 l s2.
 move: {1 3}(While _ _) (Logic.eq_refl (While b c)) => c' Ec.
@@ -851,7 +870,7 @@ case: {c' s' s1 s2 l} H Ec s2 Es=> //=.
  move => s1 s2 [s3|] // b' c' l1 l2 Tb H1 H2 [E1 E2]; subst.
  move=> s' [<-]; rewrite Tb.
  by exists s2, l1, l2.
-move=> s1 s2 b' c' /negPf TNb Es [E1 E2]; subst.
+move=> s1 b' c' /negPf TNb [E1 E2]; subst.
 by move => s' [<-]; rewrite TNb.
 Qed.
 
@@ -860,7 +879,7 @@ Lemma eval_cmd_WhileNI: forall b c s1 l,
  exists l',
    [/\ isTrue_expr s1 b,
        eval_cmd s1 (Seq c (While b c)) l' None
-     & l = leak_expr lFun s1 b ++ inl true :: l'].
+     & l = leak_expr lFun s1 b ++ 1 :: l'].
 Proof.
 move=> b c s1 l.
 move: {1 3}(While _ _) (Logic.eq_refl (While b c)) => c' Ec.
@@ -874,12 +893,274 @@ exists l1; split => //.
 by apply eval_SeqN. 
 Qed.
 
-Lemma eval_cmd_eqstate: forall c st1 l st1', 
-  eval_cmd st1 c l st1' -> 
-  forall st2 st2', 
-    eqstate st1 st2 ->
-    eqstateOpt st1' st2' -> eval_cmd st2 c l st2'.
+(*
+Definition bind_feval (x:option ((option State)*Leakage))
+ (f: State -> option ((option State)*Leakage))
+ : option ((option State)*Leakage) :=
+ match x with
+ | Some (Some st',l1) => match f st' with
+                         | Some (x,l2) => Some (x,l1++l2)
+                         | _ => None
+                         end
+ | _ => x
+ end.
+
+Notation "'BIND' x f" :=
+ (match x with
+ | Some (Some st',l1) => match f st' with
+                         | Some (x,l2) => Some (x,l1++l2)
+                         | _ => None
+                         end
+ | _ => x
+ end) (at level 200).
+(*  (right associativity, at level 60).*)
+*)
+
+(** ** Step-indexed evaluation function *)
+Function feval_cmd (i:nat) (c:cmd ops) (st: State)
+ : option ((option State)*Leakage) :=
+ match i with
+ | O => None
+ | S i' => match c with
+           | Skip => Some (Some st, [::])
+           | Assume e => if isTrue_expr st e
+                         then Some (Some st, [::])
+                         else None
+           | Assert e => if isTrue_expr st e
+                         then Some (Some st, [::])
+                         else Some (None, [::])
+           | Assign l e => Some (Some (updLValue st l (eval_expr st e)),
+                                 leak_expr lFun st (ValOf l)
+                                 ++leak_expr lFun st e)
+           | Seq c1 c2 => 
+              match feval_cmd i' c1 st with
+              | Some (Some st',l1) => match feval_cmd i' c2 st' with
+                                      | Some (x,l2) => Some (x,l1++l2)
+                                      | _ => None
+                                      end
+              | x => x
+              end
+(*
+              bind_feval (feval_cmd i' c1 st) (feval_cmd i' c2)
+*)
+           | If b c1 c2 => 
+              let e := isTrue_expr st b in
+              match (if e then feval_cmd i' c1 st else feval_cmd i' c2 st) with
+              | Some (x,l) => Some (x,leak_expr lFun st b ++ (if e then 1 else 0)::l)
+              | _ => None
+              end
+(*
+              bind_feval (Some (Some st,leak_expr lFun st b ++ [:: inl e]))
+                         (if e then feval_cmd i' c1 else feval_cmd i' c2)
+*)
+           | While b c => 
+              let e := isTrue_expr st b in
+              if e
+              then match feval_cmd i' (Seq c (While b c)) st with
+                   | Some (x,l) => Some (x,leak_expr lFun st b ++ 1::l)
+                   | _ => None
+                   end
+              else (Some (Some st,leak_expr lFun st b ++ [:: 0])) 
+(*
+              match (if e
+                     then feval_cmd i' (Seq c (While b c)) st
+                     else (Some (Some st,[::]))) with
+              | Some (x,l) => Some (x,leak_expr lFun st b ++ (inl e)::l)
+              | _ => None
+*)
+(*
+              bind_feval (Some (Some st,leak_expr lFun st b ++ [:: inl e]))
+                         (if e
+                          then (feval_cmd i' (Seq c (While b c)))
+                          else fun s => Some (Some s,[::]))
+*)
+           end
+ end.
+
+Functional Scheme feval_ind := Induction for feval_cmd Sort Prop.
+
+Lemma feval_cmd_weak: forall n n' st c l st',
+ (n <= n')%nat -> feval_cmd n c st = Some (st',l)
+ -> feval_cmd n' c st = Some (st',l).
 Proof.
+elim => // n IH [|n'] st [|e|e|x e|c1 c2|b c1 c2|b c] l st' //=.
+- move => Hn.
+  case E1: (feval_cmd n c1 st) => [[[ss|] l1]|] //=.
+   apply (IH n') in E1; rewrite // E1.
+   case E2: (feval_cmd n c2 ss) => [[[ss'|] l2]|] //= [<- <-].
+    by apply (IH n') in E2; rewrite // E2.
+   by apply (IH n') in E2; rewrite // E2.
+  move => [<- <-].     
+  by apply (IH n') in E1; rewrite // E1.
+- move => Hn.
+  case: (ifP _) => Hb.
+   case E1: (feval_cmd n c1 st) => [[[ss|] l1]|] //=.
+    by apply (IH n') in E1; rewrite // E1.
+   move => [<- <-].     
+   by apply (IH n') in E1; rewrite // E1.
+  case E2: (feval_cmd n c2 st) => [[[ss|] l2]|] //=.
+   by apply (IH n') in E2; rewrite // E2.
+  move => [<- <-].
+  by apply (IH n') in E2; rewrite // E2.
+- move => Hn.
+  case: (ifP _) => Hb.
+   case E1: (feval_cmd n (Seq c (While b c)) st) => [[[ss|] l1]|] //=.
+    by apply (IH n') in E1; rewrite // E1.
+   move => [<- <-].     
+   by apply (IH n') in E1; rewrite // E1.
+  by move => [<- <-]. 
+Qed.
+
+Lemma eval_cmd_feval: forall st c l st',
+ eval_cmd st c l st' -> 
+ exists n, feval_cmd n c st = Some (st',l).
+Proof.
+move => s1 c l s2; elim
+=> [ st
+   | st e Ee
+   | st e Ee | st e Ee
+   | st x e 
+   | sta1 sta2 [sta3|] c1 c2 l1 l2 H1 IH1 H2 IH2
+   | sta1 c1 c2 l1 l2 IH
+   | st [st'|] b c1 c2 l1 Eb H1 IH1
+   | st [st'|] b c1 c2 l1 Eb H IH
+   | st st' st'' b c' l1' l2' Eb H1 IH1 H2 IH2
+   | st b c' l' Eb H1 IH 
+   | st b c' Eb].
+- (* Skip *)
+  by exists (S O).
+- (* Assume *)
+  exists (S 0) => //=.
+  by rewrite Ee.
+- (* Assert_tt *)
+  exists (S 0) => //=.
+  by rewrite Ee.
+- (* Assert_ff *)
+  exists (S 0) => //=.
+  by rewrite (negPf Ee).
+- (* Assign *)
+  exists (S 0). 
+  by rewrite H.
+- (* Seq_STT *)
+  move: IH1 => [n1 IH1] //.
+  move: IH2 => [n2 IH2] //.
+  exists (maxn n1 n2).+1 => //=.
+  have Hn1: (n1 <= maxn n1 n2)%nat by apply leq_maxl.
+  apply (feval_cmd_weak Hn1) in IH1; rewrite IH1.
+  have Hn2: (n2 <= maxn n1 n2)%nat by apply leq_maxr.
+  by apply (feval_cmd_weak Hn2) in IH2; rewrite IH2.
+- (* Seq_STF *)
+  move: IH1 => [n1 IH1] //.
+  move: IH2 => [n2 IH2] //.
+  exists (maxn n1 n2).+1 => //=.
+  have Hn1: (n1 <= maxn n1 n2)%nat by apply leq_maxl.
+  apply (feval_cmd_weak Hn1) in IH1; rewrite IH1.
+  have Hn2: (n2 <= maxn n1 n2)%nat by apply leq_maxr.
+  by apply (feval_cmd_weak Hn2) in IH2; rewrite IH2.
+- (* Seq_SF *)
+  move: IH => [n IH] //.
+  by exists n.+1; rewrite /= IH.
+- (* If_ttT *)
+  move: IH1 => [n1 IH1] //.
+  by exists n1.+1; rewrite /= IH1 Eb.
+- (* If_ttF *)
+  move: IH1 => [n1 IH1] //.
+  by exists n1.+1; rewrite /= IH1 Eb.
+- (* If_ffT *)
+  move: IH => [n IH] //.
+  by exists n.+1; rewrite /= IH (negbTE Eb).
+- (* If_ffF *)
+  move: IH => [n IH] //.
+  by exists n.+1; rewrite /= IH (negbTE Eb).
+- (* WhileTS *)
+  move: IH1 => [n1 IH1] //.
+  move: IH2 => [n2 IH2] //.
+  exists (maxn n1 n2).+2; rewrite /= Eb.
+  have Hn1: (n1 <= maxn n1 n2)%nat by apply leq_maxl.
+  apply (feval_cmd_weak Hn1) in IH1; rewrite IH1.
+  have Hn2: (n2 <= maxn n1 n2)%nat by apply leq_maxr.
+  by apply (feval_cmd_weak Hn2) in IH2; rewrite IH2.
+- (* WhileTN *)
+  move: IH => [n IH] //.
+  by exists n.+2; rewrite /= Eb IH.
+- (* WhileF *)
+  by exists 1%N; rewrite /= (negbTE Eb).
+Qed.
+
+Lemma feval_cmd_eval: forall n st c l st',
+ feval_cmd n c st = Some (st',l) -> eval_cmd st c l st'.
+Proof.
+elim => // n IH st [|e|e|x e|c1 c2|b c1 c2|b c] l st' /=.
+- by move => [<- <-]; constructor.
+- by case: (ifP _) => // H [<- <-]; constructor.
+- case: (ifP _) => // H [<- <-].
+   by constructor.
+  by constructor; apply/negPf.
+- by move => [<- <-]; constructor.
+- case_eq (feval_cmd n c1 st) => //.
+  move => [[ss|] l1] /IH H1.
+   case_eq (feval_cmd n c2 ss) => //.
+   move => [[ss2|] b2] /IH H2 [<- <-];
+   by econstructor; [exact H1|exact H2].
+  by move => [<- <-]; constructor.
+- case: (ifP _) => Hb.
+   case_eq (feval_cmd n c1 st) => //.
+   by move => [[ss|] l1] /IH H1 [<- <-]; constructor.
+  case_eq (feval_cmd n c2 st) => //.
+  move => [[ss|] l2] /IH H1 [<- <-]; constructor => //.
+   by apply/negPf.
+  by apply/negPf.
+- case: (ifP _) => Hb.
+   case_eq (feval_cmd n (Seq c (While b c)) st) => //.
+   move => [[ss|] l1] /IH H1 [<- <-].
+   move/eval_cmd_SeqSI: H1 => [s' [l21 [l22 [H21 H22 ->]]]].
+   by econstructor; eauto.
+  move/eval_cmd_SeqNI: H1 => [H1|].
+   by constructor.
+  move => [s' [l21 [l22 [H21 H22 ->]]]].
+  by econstructor; eauto.
+- move => [<- <-]; constructor => //.
+  by apply/negPf.
+Qed.
+
+Lemma feval_eqstate: forall n c sa sb, 
+ eqstate sa sb ->
+ feqstate (feval_cmd n c sa) (feval_cmd n c sb).
+Proof.
+elim => // n IH [|e|e|x e|c1 c2|b c1 c2|b c] sa sb EqS //=.
+- by case: (ifP _) => //=; rewrite /isTrue_expr; try rewrite -> EqS => [->].
+- by case: (ifP _) => //=; rewrite /isTrue_expr; try rewrite -> EqS => [->].
+- split.
+   admit.
+  by rewrite EqS.
+- admit.
+- admit.
+- admit.
+Qed.
+
+Lemma feval_eqstateN: forall n c sa sb, 
+ eqstate sa sb ->
+ feval_cmd n c sa = None -> feval_cmd n c sb = None.
+Proof.
+admit.
+Qed.
+
+Lemma feval_eqstateS: forall n c sa sb sa' l, 
+ eqstate sa sb ->
+ feval_cmd n c sa = Some (sa',l) ->
+ exists sb', feval_cmd n c sb = Some (sb',l) /\ eqstateOpt sa' sb'.
+Proof.
+admit.
+Qed.
+
+
+Lemma eval_cmd_eqstate: forall c st1 l1 st1' st2 st2', 
+  eqstate st1 st2 ->
+  eval_cmd st1 c l1 st1' -> 
+  exists st2, eval_cmd st2 c l1 st2' /\  eqstateOpt st1' st2'.
+Proof.
+admit
+(*
 move => c st1 l st1'; elim 
 => [ st st' EqS1
    | st st' e EqS1 Ee
@@ -952,8 +1233,10 @@ move => c st1 l st1'; elim
   rewrite EqS; constructor.
    by rewrite -EqS.
   by rewrite -EqS -EqS2.
+*).
 Qed.
 
+(*
 Lemma eval_cmd_compat: forall st1 st2,
  eqstate st1 st2 ->
  forall c l st1' st2',
@@ -966,249 +1249,17 @@ move => st1 st2 eqS c l st1' st2' eqS'; split => H.
 symmetry in eqS; symmetry in eqS'.
 by apply (eval_cmd_eqstate H).
 Qed.
-
-Definition bind_feval (x:option ((option State)*Leakage))
- (f: State -> option ((option State)*Leakage))
- : option ((option State)*Leakage) :=
- match x with
- | Some (Some st',l1) => match f st' with
-                         | Some (x,l2) => Some (x,l1++l2)
-                         | _ => None
-                         end
- | _ => x
- end.
-
-Notation "'BIND' x f" :=
- (match x with
- | Some (Some st',l1) => match f st' with
-                         | Some (x,l2) => Some (x,l1++l2)
-                         | _ => None
-                         end
- | _ => x
- end) (at level 200).
-(*  (right associativity, at level 60).*)
-
-(** ** Step-indexed evaluation function *)
-Function feval_cmd (i:nat) (c:cmd ops) (st: State)
- : option ((option State)*Leakage) :=
- match i with
- | O => None
- | S i' => match c with
-           | Skip => Some (Some st, [::])
-           | Assume e => if isTrue_expr st e
-                         then Some (Some st, [::])
-                         else None
-           | Assert e => if isTrue_expr st e
-                         then Some (Some st, [::])
-                         else Some (None, [::])
-           | Assign l e => Some (Some (updLValue st l (eval_expr st e)),
-                                 leak_expr lFun st (ValOf l)
-                                 ++leak_expr lFun st e)
-           | Seq c1 c2 => 
-              match feval_cmd i' c1 st with
-              | Some (Some st',l1) => match feval_cmd i' c2 st' with
-                                      | Some (x,l2) => Some (x,l1++l2)
-                                      | _ => None
-                                      end
-              | x => x
-              end
-(*
-              bind_feval (feval_cmd i' c1 st) (feval_cmd i' c2)
 *)
-           | If b c1 c2 => 
-              let e := isTrue_expr st b in
-              match (if e then feval_cmd i' c1 st else feval_cmd i' c2 st) with
-              | Some (x,l) => Some (x,leak_expr lFun st b ++ (inl e)::l)
-              | _ => None
-              end
-(*
-              bind_feval (Some (Some st,leak_expr lFun st b ++ [:: inl e]))
-                         (if e then feval_cmd i' c1 else feval_cmd i' c2)
-*)
-           | While b c => 
-              let e := isTrue_expr st b in
-              if e
-              then match feval_cmd i' (Seq c (While b c)) st with
-                   | Some (x,l) => Some (x,leak_expr lFun st b ++ (inl e)::l)
-                   | _ => None
-                   end
-              else (Some (Some st,leak_expr lFun st b ++ [::inl e])) 
-(*
-              match (if e
-                     then feval_cmd i' (Seq c (While b c)) st
-                     else (Some (Some st,[::]))) with
-              | Some (x,l) => Some (x,leak_expr lFun st b ++ (inl e)::l)
-              | _ => None
-*)
-(*
-              bind_feval (Some (Some st,leak_expr lFun st b ++ [:: inl e]))
-                         (if e
-                          then (feval_cmd i' (Seq c (While b c)))
-                          else fun s => Some (Some s,[::]))
-*)
-           end
- end.
-
-Functional Scheme feval_ind := Induction for feval_cmd Sort Prop.
-
-Lemma feval_cmd_weak: forall n n' st c l st',
- (n <= n')%nat -> feval_cmd n c st = Some (st',l)
- -> feval_cmd n' c st = Some (st',l).
-Proof.
-elim => // n IH [|n'] st [|e|e|x e|c1 c2|b c1 c2|b c] l st' //=.
-- move => Hn.
-  case E1: (feval_cmd n c1 st) => [[[ss|] l1]|] //=.
-   apply (IH n') in E1; rewrite // E1.
-   case E2: (feval_cmd n c2 ss) => [[[ss'|] l2]|] //= [<- <-].
-    by apply (IH n') in E2; rewrite // E2.
-   by apply (IH n') in E2; rewrite // E2.
-  move => [<- <-].     
-  by apply (IH n') in E1; rewrite // E1.
-- move => Hn.
-  case: (ifP _) => Hb.
-   case E1: (feval_cmd n c1 st) => [[[ss|] l1]|] //=.
-    by apply (IH n') in E1; rewrite // E1.
-   move => [<- <-].     
-   by apply (IH n') in E1; rewrite // E1.
-  case E2: (feval_cmd n c2 st) => [[[ss|] l2]|] //=.
-   by apply (IH n') in E2; rewrite // E2.
-  move => [<- <-].
-  by apply (IH n') in E2; rewrite // E2.
-- move => Hn.
-  case: (ifP _) => Hb.
-   case E1: (feval_cmd n (Seq c (While b c)) st) => [[[ss|] l1]|] //=.
-    by apply (IH n') in E1; rewrite // Hb E1.
-   move => [<- <-].     
-   by apply (IH n') in E1; rewrite // Hb E1.
-  by move => [<- <-]; rewrite Hb.
-Qed.
-
-Lemma eval_cmd_feval: forall st c l st',
- eval_cmd st c l st' -> 
- exists n s, feval_cmd n c st = Some (s,l) /\ eqstateOpt s st'.
-Proof.
-move => s1 c l s2; elim
-=> [ st st' EqS1
-   | st st' e EqS1 Ee
-   | st st' e EqS1 Ee | st e Ee
-   | st st' x e EqS1
-   | sta1 sta2 [sta3|] c1 c2 l1 l2 H1 IH1 H2 IH2
-   | sta1 c1 c2 l1 l2 IH
-   | st [st'|] b c1 c2 l1 Eb H1 IH1
-   | st [st'|] b c1 c2 l1 Eb H IH
-   | st st' st'' b c' l1' l2' Eb H1 IH1 H2 IH2
-   | st b c' l' Eb H1 IH 
-   | st st' b c' Eb EqS1].
-- (* Skip *)
-  by exists (S O), (Some st); split.
-- (* Assume *)
-  exists (S 0), (Some st); split => //=.
-  by rewrite Ee.
-- (* Assert_tt *)
-  exists (S 0), (Some st); split => //=.
-  by rewrite Ee.
-- (* Assert_ff *)
-  exists (S 0), None; split => //=.
-  by rewrite (negPf Ee).
-- (* Assign *)
-  exists (S 0); eexists. 
-  by simpl; split; first by reflexivity.
-- (* Seq_S *)
-  move: IH1 => [n1 [[sa|] [H11 H12]]] //.
-  move: IH2 => [n2 [osb [H21 H22]]] //.
-  exists (max n1 n2).+1, osb; split => //=.
-  have Hn1: (n1 <= max n1 n2)%nat by admit.
-  apply (feval_cmd_weak Hn1) in H11; rewrite H11.
-  have Hn2: (n2 <= max n1 n2)%nat by admit.
-  apply (feval_cmd_weak Hn2) in H21. rewrite H21.
-admit.
-- (* Seq_S *)
-  apply eval_SeqS with sta2.
-   by apply IH1.
-  by [].
-- (* Seq_N *)
-  apply eval_SeqN. 
-  by apply IH.
-- (* If_tt *)
-  rewrite EqS; constructor.
-   by rewrite -EqS.
-  by apply IH1.
-- (* If_tt *)
-  rewrite EqS; constructor.
-   by rewrite -EqS.
-  by apply IH1.
-- (* If_ff *)
-  rewrite EqS; constructor.
-   by rewrite -EqS.
-  by apply IH.
-- (* If_ff *)
-  rewrite EqS; constructor.
-   by rewrite -EqS.
-  by apply IH.
-- (* WhileTS *)
-  rewrite EqS; eapply eval_WhileTS.
-    by rewrite -EqS.
-   by apply IH1 => //=.
-  by apply IH2.
-- (* WhileTS *)
-  rewrite EqS; eapply eval_WhileTS.
-    by rewrite -EqS.
-   by apply IH1 => //=.
-  by apply IH2.
-- (* WhileTN *)
-  rewrite EqS; eapply eval_WhileTN.
-   by rewrite -EqS.
-  by apply IH.
-- (* WhileF *)
-  rewrite EqS; constructor.
-   by rewrite -EqS.
-  by rewrite -EqS -EqS2.
-admit (* induction on the derivation of eval_cmd *).
-Qed.
-
-Lemma feval_cmd_eval: forall n st c l st',
- feval_cmd n c st = Some (st',l) -> eval_cmd st c l st'.
-Proof.
-elim => // n IH st [|e|e|x e|c1 c2|b c1 c2|b c] l st' /=.
-- by move => [<- <-]; constructor.
-- by case: (ifP _) => // H [<- <-]; constructor.
-- case: (ifP _) => // H [<- <-].
-   by constructor.
-  by constructor; apply/negPf.
-- by move => [<- <-]; constructor.
-- case_eq (feval_cmd n c1 st) => //.
-  move => [[ss|] l1] /IH H1.
-   case_eq (feval_cmd n c2 ss) => //.
-   move => [[ss2|] b2] /IH H2 [<- <-];
-   by econstructor; [exact H1|exact H2].
-  by move => [<- <-]; constructor.
-- case: (ifP _) => Hb.
-   case_eq (feval_cmd n c1 st) => //.
-   by move => [[ss|] l1] /IH H1 [<- <-]; constructor.
-  case_eq (feval_cmd n c2 st) => //.
-  move => [[ss|] l2] /IH H1 [<- <-]; constructor => //.
-   by apply/negPf.
-  by apply/negPf.
-- case: (ifP _) => Hb.
-   case_eq (feval_cmd n (Seq c (While b c)) st) => //.
-   move => [[ss|] l1] /IH H1 [<- <-].
-   move/eval_cmd_SeqSI: H1 => [s' [l21 [l22 [H21 H22 ->]]]].
-   by rewrite Hb; econstructor; eauto.
-  move/eval_cmd_SeqNI: H1 => [H1|].
-   by rewrite Hb; constructor.
-  move => [s' [l21 [l22 [H21 H22 ->]]]].
-  by rewrite Hb; econstructor; eauto.
-- move => [<- <-]; rewrite Hb; constructor => //.
-  by apply/negPf.
-Qed.
 
 End CmdEval.
 
+(*
 Add Parametric Morphism (ops:opSig) (lFun:LeakFun ops): (@eval_cmd _ lFun)
  with signature
   eqstate ==> @eq (cmd ops) ==> @eq Leakage ==> eqstateOpt ==> iff
  as eval_cmd_morph.
 Proof. by apply eval_cmd_compat. Qed.
+*)
 
 Section EvalProps.
 
@@ -1226,17 +1277,17 @@ Proof.
 move=> c s1 s2 s1' s2' l1 l2 l3 l4 H1 H2; move: H1 s2 l2 s2' H2 l3 l4.
 move: {1 3}(Some s1') (eqstateOpt_refl (Some s1')) => os Eos H1.
 elim: H1 s1' Eos
-=> [ sta stb EqSab
-   | sta stb e EqSab Ee
-   | sta stb e EqSab Ee | sta e Ee
-   | sta stb x e EqSab
+=> [ sta 
+   | sta e Ee
+   | sta e Ee | sta e Ee
+   | sta stb x e ->
    | sta stb stc ca cb la lb Ha IHa Hb IHb
    | sta c1 c2 la lb IH
    | sta stb b ca cb la Eb Ha IHa
    | sta stb b ca cb lb Eb Hb IHb
    | sta stb stc b cb la lb Eb Ha IHa Hb IHb
    | sta b cb lb Eb Ha IHa 
-   | sta stb b cb Eb EqSab] s1' //= Eos s2 l2 s2'.
+   | sta b cb Eb] s1' //= Eos s2 l2 s2'.
 - (* skip *)
 by move=> /eval_cmd_SkipI [/= EqS ->].
 - (* assume *)
@@ -1311,6 +1362,7 @@ Lemma eval_cmd_determ: forall c st1 st2 st1' st2' l1 l2,
  eval_cmd lFun st1 c l1 st1' -> eval_cmd lFun st2 c l2 st2' -> 
  eqstate st1 st2 -> l1=l2 /\ eqstateOpt st1' st2'.
 Proof.
+admit (* é muito mais simples a prova por ... 
 move => c st1 st2 st1' st2' l1 l2 H; elim: H st2 l2 st2'
 => [ sta stb EqSab
    | sta stb e EqSab Ee
@@ -1402,8 +1454,8 @@ move => c st1 st2 st1' st2' l1 l2 H; elim: H st2 l2 st2'
   move=> /eval_cmd_SeqNI [H2 El|[s' [l1' [l2' [H2 H3]]]] El1 El2] Es.
    by move/negP: Eb; elim; rewrite Es.
   by move/negP: Eb; elim; rewrite Es.
+*).
 Qed.
-
 
 (** * Program Safety
 
@@ -1412,6 +1464,11 @@ Qed.
 *)
 Definition Safe (P:State -> Prop) (c:cmd ops) :=
  forall st, P st -> exists st' l, eval_cmd lFun st c l (Some st').
+
+(* isto fazia sentido na estratégia de prova para a construção simples!!!
+ agora é redundante.
+
+
 
 Definition assertionCmd (c:cmd ops) : bool :=
  match c with
@@ -1490,6 +1547,7 @@ by apply IH2.
 - (* WhileF *)
 by apply eval_WhileF.
 Qed.
+*)
 
 (** * Leakage Security (with disclosure of portion of the output state)
 
