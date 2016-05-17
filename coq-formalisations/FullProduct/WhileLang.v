@@ -1462,7 +1462,10 @@ Qed.
   A program is called [Safe] if, for every possible input state,
  it terminates in a non-error state
 *)
-Definition Safe (P:State -> Prop) (c:cmd ops) :=
+Definition Safe (c:cmd ops) :=
+ forall st, exists st' l, eval_cmd lFun st c l (Some st').
+
+Definition SafeRestr (P:State -> Prop) (c:cmd ops) :=
  forall st, P st -> exists st' l, eval_cmd lFun st c l (Some st').
 
 (* isto fazia sentido na estratégia de prova para a construção simples!!!

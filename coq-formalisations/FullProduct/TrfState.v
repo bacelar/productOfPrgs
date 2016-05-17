@@ -20,6 +20,10 @@ Open Scope Z_scope.
 Record trfState := mkTrfSt { ok : Z
                            ; sc: Z -> Z }.
 
+Definition trfState0 := mkTrfSt 0 (fun _ => 0).
+
+Definition TrfState := (State*State*trfState)%type.
+
 Definition eqtrfstate (ssa ssb:trfState) : Prop :=
  ok ssa = ok ssb /\ forall i, sc ssa i = sc ssb i.
 
@@ -71,42 +75,40 @@ Add Parametric Relation : (State*State) eqstatePair
  transitivity proved by eqstatePair_trans
  as eqstatePair_equiv.
 
-Definition eqstateTriple (ssa ssb:State*State*trfState) : Prop :=
+Definition eqTrfState (ssa ssb:TrfState) : Prop :=
  eqstatePair ssa.1 ssb.1 /\ eqtrfstate ssa.2 ssb.2.
 
-Lemma eqstateTriple_refl: forall ss, eqstateTriple ss ss.
-Proof. by rewrite /eqstateTriple; move => [s1 s2] /=; split. Qed.
+Lemma eqTrfState_refl: forall ss, eqTrfState ss ss.
+Proof. by rewrite /eqTrfState; move => [s1 s2] /=; split. Qed.
 
-Lemma eqstateTriple_sym: forall ss1 ss2,
- eqstateTriple ss1 ss2 -> eqstateTriple ss2 ss1.
+Lemma eqTrfState_sym: forall ss1 ss2,
+ eqTrfState ss1 ss2 -> eqTrfState ss2 ss1.
 Proof.
-rewrite /eqstateTriple; move => [s11 s12] [s21 s22] /= [H1 H2]; split.
+rewrite /eqTrfState; move => [s11 s12] [s21 s22] /= [H1 H2]; split.
  by apply eqstatePair_sym.
 by apply eqtrfstate_sym.
 Qed.
 
-Lemma eqstateTriple_trans: forall ss1 ss2 ss3,
- eqstateTriple ss1 ss2 -> eqstateTriple ss2 ss3 -> eqstateTriple ss1 ss3.
+Lemma eqTrfState_trans: forall ss1 ss2 ss3,
+ eqTrfState ss1 ss2 -> eqTrfState ss2 ss3 -> eqTrfState ss1 ss3.
 Proof.
-rewrite /eqstateTriple.
+rewrite /eqTrfState.
 move => [[s11 s12] s13] [[s21 s22] s23] [[s31 s32] s33] /=.
 move => [H11 H12] [H21 H22]; split.
  by eapply eqstatePair_trans; eauto.
 by eapply eqtrfstate_trans; eauto.
 Qed.
 
-Add Parametric Relation : (State*State*trfState) eqstateTriple
- reflexivity proved by eqstateTriple_refl
- symmetry proved by eqstateTriple_sym
- transitivity proved by eqstateTriple_trans
- as eqstateTriple_equiv.
+Add Parametric Relation : (TrfState) eqTrfState
+ reflexivity proved by eqTrfState_refl
+ symmetry proved by eqTrfState_sym
+ transitivity proved by eqTrfState_trans
+ as eqTrfState_equiv.
 
 Add Parametric Morphism : (@fst State State)
  with signature eqstatePair ==> eqstate
  as fstState_morph.
-Proof. 
-by rewrite /eqstatePair; move => [s11 s12] [s21 s22] /= [-> _].
-Qed.
+Proof. by rewrite /eqstatePair; move => [s11 s12] [s21 s22] /= [-> _]. Qed.
 
 Add Parametric Morphism : (@snd State State)
  with signature eqstatePair ==> eqstate
@@ -115,19 +117,29 @@ Proof.
 by rewrite /eqstatePair; move => [s11 s12] [s21 s22] /= [_ ->].
 Qed.
 
+Add Parametric Morphism : (@pair State State)
+ with signature eqstate ==> eqstate ==> eqstatePair
+ as pairState_morph.
+Proof. by rewrite /eqstatePair; move => [s11 s12] [s21 s22] /=. Qed.
+
 Add Parametric Morphism : (@fst (State*State) trfState)
- with signature eqstateTriple ==> eqstatePair
- as fstStateTriple_morph.
+ with signature eqTrfState ==> eqstatePair
+ as fstTrfState_morph.
 Proof. 
-by rewrite /eqstateTriple; move => [s11 s12] [s21 s22] /= [-> _].
+by rewrite /eqTrfState; move => [s11 s12] [s21 s22] /= [-> _].
 Qed.
 
 Add Parametric Morphism : (@snd (State*State) trfState)
- with signature eqstateTriple ==> eqtrfstate
- as sndStateTriple_morph.
+ with signature eqTrfState ==> eqtrfstate
+ as sndTrfState_morph.
 Proof. 
-by rewrite /eqstateTriple; move => [s11 s12] [s21 s22] /= [_ H].
+by rewrite /eqTrfState; move => [s11 s12] [s21 s22] /= [_ H].
 Qed.
+
+Add Parametric Morphism : (@pair (State*State) trfState)
+ with signature eqstatePair ==> eqtrfstate ==> eqTrfState
+ as pairTrfState_morph.
+Proof. by rewrite /eqTrfState; move => [s11 s12] [s21 s22] /=. Qed.
 
 Section StateJoin.
 
@@ -169,34 +181,44 @@ by rewrite /id_selA /= Pos.succ_pred_double.
 Qed.
 *)
 
-Definition joinState (st: trfState) (s1 s2:State) : State :=
- (id_sel (ok st) s1.1 s2.1, id_selA (sc st) s1.2 s2.2).
+Definition joinState (st: TrfState) : State :=
+ (id_sel (ok st.2) st.1.1.1 st.1.2.1, id_selA (sc st.2) st.1.1.2 st.1.2.2).
 
-Definition splitState (s:State) : State*State*trfState :=
+Definition splitState (s:State) : TrfState :=
  ( (fun i => s.1 (id_i1 i), fun ai => s.2 (idA id_i1 ai))
  , (fun i => s.1 (id_i2 i), fun ai => s.2 (idA id_i2 ai))
  , mkTrfSt (s.1 xH) (fun i=>s.2 (xH,i)) ).
 
-Lemma split_joinState_1: forall ts st1 st2,
- eqstate (splitState (joinState ts st1 st2)).1.1 st1.
+Lemma split_joinState_1: forall (st1 st2:State) (ts:trfState),
+ eqstate (splitState (joinState (st1,st2,ts))).1.1 st1.
 Proof. by []. Qed.
 
-Lemma split_joinState_2: forall ts st1 st2,
- eqstate (splitState (joinState ts st1 st2)).1.2 st2.
+Lemma split_joinState_2: forall (st1 st2:State) (ts:trfState),
+ eqstate (splitState (joinState (st1,st2,ts))).1.2 st2.
 Proof. by []. Qed.
 
 Lemma join_splitState: forall st,
- eqstate (joinState (splitState st).2 (splitState st).1.1 (splitState st).1.2) st.
-Proof. move => st [i|i|] => //=.
-Qed.
+ eqstate (joinState (splitState st)) st.
+Proof. move => st [i|i|] => //=. Qed.
 
 Definition joinStateEqLow (lowMap:VarRestr) (s:State) : Prop :=
  eqstateR lowMap (splitState s).1.1 (splitState s).1.2.
 
 Lemma joinState_compat: forall s s',
+ eqTrfState s s' -> eqstate (joinState s) (joinState s').
+Proof.
+rewrite /eqTrfState /eqstatePair => [[[s1 s2] s] [[s1' s2'] s']] /=. 
+move => [[Es1 Es2] Es] [x|x|] /=.
+  by move: {Es2} (Es2 x) => [Es21 Es22]; split.
+ by move: {Es1 Es2} (Es1 x) => [Es11 Es12]; split.
+move: {Es1 Es2} Es => [/eqP Es1 Es2]; split => //=.
+by move => x; rewrite /id_selA (Es2 x).
+Qed.
+(*
+Lemma joinState_compat: forall s s',
  eqtrfstate s s' -> forall st1 st1', 
  eqstate st1 st1' -> forall st2 st2',
- eqstate st2 st2' -> eqstate (joinState s st1 st2) (joinState s' st1' st2').
+ eqstate st2 st2' -> eqstate (joinState (st1,st2,s)) (joinState (st1',st2',s')).
 Proof.
 move => s s' Es st1 st1' EqS1 st2 st2' EqS2 [x|x|] /=.
   by move: {EqS2} (EqS2 x) => [Es21 Es22]; split.
@@ -204,7 +226,7 @@ move => s s' Es st1 st1' EqS1 st2 st2' EqS2 [x|x|] /=.
 move: Es => [/eqP Es1 Es2]; split => //=.
 by move => x; rewrite /id_selA (Es2 x).
 Qed.
-
+*)
 Lemma splitState_compat1: forall st st', 
  eqstate st st' -> eqstate (splitState st).1.1 (splitState st').1.1.
 Proof.
@@ -229,24 +251,24 @@ Qed.
 
 Variable ops: opSig.
 
-Fixpoint ren_expr f (e: expr ops) : expr ops :=
+Fixpoint ren_expr side (e: expr ops) : expr ops :=
  match e with
- | ValOf l => ValOf (ren_lvalue f l)
+ | ValOf l => ValOf (ren_lvalue side l)
  | Const z => @Const ops z
- | Minus e1 e2 => Minus (ren_expr f e1) (ren_expr f e2)
- | Mult e1 e2 => Mult (ren_expr f e1) (ren_expr f e2)
- | Equal e1 e2 => Equal (ren_expr f e1) (ren_expr f e2)
- | Op o args => @Op ops _ (@ren_texpr f (op_arity o) args)
+ | Minus e1 e2 => Minus (ren_expr side e1) (ren_expr side e2)
+ | Mult e1 e2 => Mult (ren_expr side e1) (ren_expr side e2)
+ | Equal e1 e2 => Equal (ren_expr side e1) (ren_expr side e2)
+ | Op o args => @Op ops _ (@ren_texpr side (op_arity o) args)
  end
-with ren_texpr f {n:nat} (x:texpr ops n) : texpr ops n :=
+with ren_texpr side {n:nat} (x:texpr ops n) : texpr ops n :=
  match x with
  | t_nil => @t_nil ops
- | t_cons _ x l => t_cons (ren_expr f x) (ren_texpr f l)
+ | t_cons _ x l => t_cons (ren_expr side x) (ren_texpr side l)
  end
-with ren_lvalue f l :=
+with ren_lvalue side l :=
  match l with
- | Var v => @Var _ (f v)
- | ArrCell a e => ArrCell (f a) (ren_expr f e)
+ | Var v => @Var _ (if side then xI v else xO v)
+ | ArrCell a e => ArrCell (if side then xI a else xO a) (ren_expr side e)
  end.
 
 Lemma ren_Minus: forall f (e1 e2:expr ops),
@@ -266,24 +288,24 @@ Lemma ren_tcons: forall f (e:expr ops) n (t:texpr ops n),
 Proof. by []. Qed.
 
 Lemma ren_ArrCell: forall f a (e:expr ops),
- ren_lvalue f (ArrCell a e) = ArrCell (f a) (ren_expr f e).
+ ren_lvalue f (ArrCell a e) = ArrCell (if f then xI a else xO a) (ren_expr f e).
 Proof. by []. Qed.
 
-Definition expr_i1 e := ren_expr id_i1 e.
-Definition expr_i2 e := ren_expr id_i2 e.
-Definition lvalue_i1 e := ren_lvalue id_i1 e.
-Definition lvalue_i2 e := ren_lvalue id_i2 e.
+Definition expr_i1 e := ren_expr false e.
+Definition expr_i2 e := ren_expr true e.
+Definition lvalue_i1 e := ren_lvalue false e.
+Definition lvalue_i2 e := ren_lvalue true e.
 
 Lemma eval_expr_join_i1: forall e s st1 st2,
- eval_expr (joinState s st1 st2) (expr_i1 e) = eval_expr st1 e.
+ eval_expr (joinState (st1,st2,s)) (expr_i1 e) = eval_expr st1 e.
 Proof.
 pose P1 e := (forall s (st1 st2 : State),
- eval_expr (joinState s st1 st2) (ren_expr xO e) = eval_expr st1 e).
+ eval_expr (joinState (st1,st2,s)) (ren_expr false e) = eval_expr st1 e).
 pose P2 n (args: texpr ops n) := (forall s (st1 st2 : State) zl,
- eval_texpr (joinState s st1 st2) zl (ren_texpr xO args)
+ eval_texpr (joinState (st1,st2,s)) zl (ren_texpr false args)
  = eval_texpr st1 zl args).
 pose P3 l := (forall s (st1 st2 : State),
- eval_lvalue (joinState s st1 st2) (ren_lvalue xO l) = eval_lvalue st1 l).
+ eval_lvalue (joinState (st1,st2,s)) (ren_lvalue false l) = eval_lvalue st1 l).
 apply (@expr_mixed_ind ops P1 P2 P3); unfold P1, P2, P3.
 (* ValOf *) 
 move => l IH s st1 st2.
@@ -335,15 +357,15 @@ by rewrite !E /= /id_selA /= IHi.
 Qed.
 
 Lemma eval_expr_join_i2: forall e s st1 st2,
- eval_expr (joinState s st1 st2) (expr_i2 e) = eval_expr st2 e.
+ eval_expr (joinState (st1,st2,s)) (expr_i2 e) = eval_expr st2 e.
 Proof.
 pose P1 e := (forall s (st1 st2 : State),
- eval_expr (joinState s st1 st2) (ren_expr id_i2 e) = eval_expr st2 e).
+ eval_expr (joinState (st1,st2,s)) (ren_expr true e) = eval_expr st2 e).
 pose P2 n (args: texpr ops n) := (forall s (st1 st2 : State) zl,
- eval_texpr (joinState s st1 st2) zl (ren_texpr id_i2 args)
+ eval_texpr (joinState (st1,st2,s)) zl (ren_texpr true args)
  = eval_texpr st2 zl args).
 pose P3 l := (forall s (st1 st2 : State),
- eval_lvalue (joinState s st1 st2) (ren_lvalue id_i2 l) = eval_lvalue st2 l).
+ eval_lvalue (joinState (st1,st2,s)) (ren_lvalue true l) = eval_lvalue st2 l).
 apply (@expr_mixed_ind ops P1 P2 P3); unfold P1, P2, P3.
 (* ValOf *)
 move => l IH s st1 st2.
@@ -395,8 +417,8 @@ by rewrite !E /= IHi /=.
 Qed.
 
 Lemma updLValue_join_i1: forall s st1 st2 x y,
- eqstate (updLValue (joinState s st1 st2) (lvalue_i1 x) y)
-         (joinState s (updLValue st1 x y) st2).
+ eqstate (updLValue (joinState (st1,st2,s)) (lvalue_i1 x) y)
+         (joinState (updLValue st1 x y,st2,s)).
 Proof.
 move => s st1 st2 [v|a e] y x /=; rewrite /upd; split => //=.
  move: x => [x|x|] //=.
@@ -404,9 +426,10 @@ move => s st1 st2 [v|a e] y x /=; rewrite /upd; split => //=.
 move: x => [x|x|] z; rewrite /id_selA xpair_eqE ?id_i1_Nodd //=.
 by rewrite xpair_eqE /id_i1 eval_expr_join_i1.
 Qed.
+
 Lemma updLValue_join_i2: forall s st1 st2 x y,
- eqstate (updLValue (joinState s st1 st2) (lvalue_i2 x) y)
-         (joinState s st1 (updLValue st2 x y)).
+ eqstate (updLValue (joinState (st1,st2,s)) (lvalue_i2 x) y)
+         (joinState (st1,updLValue st2 x y,s)).
 Proof.
 move => s st1 st2 [v|a e] y x /=; rewrite /upd; split => //=.
  move: x => [x|x|] //=.
@@ -416,8 +439,8 @@ by rewrite xpair_eqE /id_i2 eval_expr_join_i2.
 Qed.
 
 Lemma eval_updLValue_i1: forall s st1 st2 x y e,
- eval_expr (updLValue (joinState s st1 st2) (lvalue_i1 x) y) (expr_i2 e)
- = eval_expr (joinState s st1 st2) (expr_i2 e).
+ eval_expr (updLValue (joinState (st1,st2,s)) (lvalue_i1 x) y) (expr_i2 e)
+ = eval_expr (joinState (st1,st2,s)) (expr_i2 e).
 Proof. 
 by move=> s st1 st2 x y e; rewrite updLValue_join_i1 !eval_expr_join_i2.
 Qed.
@@ -425,15 +448,15 @@ Qed.
 End StateJoin.
 
 Add Parametric Morphism : joinState
- with signature eqtrfstate ==> eqstate ==> eqstate ==> eqstate
+ with signature eqTrfState ==> eqstate
  as joinState_morph.
 Proof. by intro; apply joinState_compat. Qed.
 
 Add Parametric Morphism : splitState
- with signature eqstate ==> eqstateTriple
+ with signature eqstate ==> eqTrfState
  as splitState_morph.
 Proof.
-rewrite /eqstateTriple /eqstatePair => s1 s2 EqS.
+rewrite /eqTrfState /eqstatePair => s1 s2 EqS.
 by rewrite splitState_compat1 // splitState_compat2 // splitState_compat3.
 Qed.
 
