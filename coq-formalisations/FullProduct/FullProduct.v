@@ -169,6 +169,43 @@ rewrite -/([::]++ll); eapply eval_SeqS.
 *).
 Qed.
 
+(* prop1 de fullProduct *)
+Lemma fullProduct_sound': forall vIN vOUT c s1 s2 l1 l2 s1' s2',
+  eqstateR vIN s1 s2 ->
+  eval_cmd lspec s1 c l1 (Some s1') ->
+  eval_cmd lspec s2 c l2 (Some s2') ->
+  eqstateR vOUT s1' s2' ->
+  exists ss ll,
+   eval_cmd lspec (joinState (s1, s2, trfState0)) (fullProduct c)
+            ll ss
+   /\ (ss <> None -> l1=l2).
+Proof.
+admit.
+Qed.
+
+(* prop2 de productTrf 
+(* Esta é a propriedade principal do produto!.
+
+  H : forall (s1 : State) (l1 : Leakage) (ss1 : option State),
+      eval_cmd lspec s1 c l1 ss1 ->
+      exists s1' : State,
+        ss1 = Some s1' /\
+        (forall (s2 s2' : State) (l2 : Leakage),
+         eqstateR vIN s1 s2 ->
+         eval_cmd lspec s2 c l2 (Some s2') ->
+         eqstateR vOUT s1' s2' -> l1 = l2)
+  st : State
+  ss' : State
+  l2 : Leakage
+  l2' : Leakage
+  H2a : joinStateEqLow vIN (updVar st 1%positive (eval_expr st (Const 1)))
+  H2' : eval_cmd lspec (updVar st 1%positive (eval_expr st (Const 1)))
+          (productTrf c) l2' (Some ss')
+  Hout : joinStateEqLow vOUT ss'
+  ============================
+   isTrue_expr ss' ok_expr
+*)
+*)
 
 Theorem fullProduct_sound: forall c,
  Safe lspec (fullProduct c) ->
@@ -181,18 +218,8 @@ move: ss1 H1 => [s1'|] H1; last first.
  by move: (H' _ _ H1).
 exists s1'; split => // s2 s2' l2 HIN H2 HOUT.
 move: {H} (H (joinState (s1,s2,trfState0))) => H.
-admit (* prop. de fullProduct *).
-(*
- HIN : eqstateR vIN s1 s2
- H1 : eval_cmd lspec s1 c l1 (Some s1')
- H2 : eval_cmd lspec s2 c l2 (Some s2')
- HOUT : eqstateR vOUT s1' s2'
- =======
- exists ll s',
- eval_cmd lspec (joinState (s1, s2, trfState0))
-                (fullProduct' c) ll (Some s')
- /\ eval_expr s' ok_expr != 0 -> l1=l2
-*)
+move: (fullProduct_sound' HIN H1 H2 HOUT) => [st' [ll [HH1]]].
+by move: {H} st' HH1 (H _ _ HH1) => [st'|] HH1 _ //; apply.
 Qed.
 
 Theorem fullProduct_complete: forall c,
