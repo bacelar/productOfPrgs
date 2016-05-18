@@ -37,10 +37,10 @@ Record LeakSpec :=
 
 Variable lspec: LeakSpec.
 
-Definition ok_lvalue: lvalue ops := Var _ xH.
-Definition okSC_lvalue := ArrCell xH (Const ops okSC_idx).
-Definition clSC_lvalue := ArrCell xH (Const ops clSC_idx).
-Definition crSC_lvalue := ArrCell xH (Const ops crSC_idx).
+Definition ok_lvalue: lvalue ops := Var xH.
+Definition okSC_lvalue := ArrCell xH (@Const ops okSC_idx).
+Definition clSC_lvalue := ArrCell xH (@Const ops clSC_idx).
+Definition crSC_lvalue := ArrCell xH (@Const ops crSC_idx).
 Definition leakSC_lvalue (e: expr ops) : lvalue ops := ArrCell xH e.
 Definition ok_expr: expr ops := ValOf ok_lvalue.
 Definition okSC_expr: expr ops := ValOf okSC_lvalue.
@@ -49,16 +49,16 @@ Definition crSC_expr: expr ops := ValOf crSC_lvalue.
 Definition leakSC_expr (e: expr ops) : expr ops := ValOf (leakSC_lvalue e).
 
 Definition initSC: cmd ops :=
- Seq (Assign okSC_lvalue (Const _ 1))
-     (Seq (Assign clSC_lvalue (Const _ 0))
-          (Assign crSC_lvalue (Const _ 0))).
+ Seq (Assign okSC_lvalue (Const 1))
+     (Seq (Assign clSC_lvalue (Const 0))
+          (Assign crSC_lvalue (Const 0))).
 
 Definition okSC_upd (e: expr ops) : cmd ops :=
  Assign okSC_lvalue (And okSC_expr e).
 Definition clSC_inc : cmd ops :=
- Assign clSC_lvalue (Minus clSC_expr (Const _ (-1))).
+ Assign clSC_lvalue (Minus clSC_expr (Const (-1))).
 Definition crSC_inc : cmd ops :=
- Assign crSC_lvalue (Minus crSC_expr (Const _ (-1))).
+ Assign crSC_lvalue (Minus crSC_expr (Const (-1))).
 
 
 (** registers the (pre)leakage of an expression *)
@@ -282,3 +282,14 @@ Admitted.
 
 End SCtrf.
 
+
+Arguments ok_lvalue [ops].
+Arguments okSC_lvalue [ops].
+Arguments clSC_lvalue [ops].
+Arguments crSC_lvalue [ops].
+Arguments leakSC_lvalue [ops] _.
+Arguments ok_expr [ops].
+Arguments okSC_expr [ops].
+Arguments clSC_expr [ops].
+Arguments crSC_expr [ops].
+Arguments leakSC_expr [ops] _.

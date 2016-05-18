@@ -92,49 +92,6 @@ end.
 Lemma texprSI: forall n (t:texpr n.+1), exists e' t', t=t_cons e' t'.
 Proof. by apply texprSE => e n t; exists e, t. Qed.
 
-(** Equality 
-
-remark: an alternative was to define an injective function from
-type [texpr], so that we avoid issues related to the use of dependent
-types...
-
-E.g.
-
-Definition EData := (Z*(Z+(ops op_sig)))%type.
-Fixpoint finj_expr e : seq (seq EData):=
- match e with
- | ValOf x => finj_lvalue x
- | Const z => [:: [:: (3,inl z)]]
- | Minus e1 e2 => [:: [:: (4,inl 0)] & finj_expr e1 ++ finj_expr e2]
- | Mult e1 e2 => [:: [:: (5,inl 0)] & finj_expr e1 ++ finj_expr e2]
- | Equal e1 e2 => [:: [:: (6,inl 0)] & finj_expr e1 ++ finj_expr e2]
- | Op o te => [:: [:: (7,inr o)] & finj_texpr te]
- end
-with finj_texpr n (te: texpr n) : seq (seq EData):=
- match te with
- | t_nil => [::]
- | t_cons _ e te' => (finj_expr e)++(finj_texpr te')
- end
-with finj_lvalue x :=
- match x with
- | Var v => [:: [:: (1,inl (Zpos v))]]
- | ArrCell a e => [:: [:: (2, inl (Zpos a))] & finj_expr e]
- end.
-
-Lemma finj_expr_cat: forall e1 l1 e2 l2,
- finj_expr e1 ++ l1 = finj_expr e2 ++ l2 ->
- e1 = e2 /\ l1=l2.
-Proof. (* by induction on e1 *)
-Admitted.
-Lemma finj_expr_inj: injective finj_expr.
-Proof. (* by induction on e1 *)
-Admitted.
-
-Definition expr_eqMixin := InjEqMixin finj_expr_inj.
-Canonical expr_eqType := Eval hnf in EqType expr expr_eqMixin.        *)
-
-(** but, instead, we define directly the equality function on [expr] *)
-
 Definition texpr_cast o1 o2 (p:o1=o2)
  : texpr (@op_arity op_sig o1) -> texpr (op_arity o2) :=
  (fun f => eq_rect o1 (fun o => texpr (op_arity o1) -> texpr (op_arity o))
@@ -317,6 +274,9 @@ Definition cmd_eqMixin := EqMixin cmd_eqP.
 Canonical cmd_eqType := Eval hnf in EqType cmd cmd_eqMixin.
 
 End Syntax.
+
+Arguments Const [op_sig] _.
+Arguments Var [op_sig] _.
 
 (** * State *)
 Section StateDef.
@@ -1459,98 +1419,11 @@ Qed.
 
 (** * Program Safety
 
-  A program is called [Safe] if, for every possible input state,
- it terminates in a non-error state
+  A program is [Safe] if it doesn't terminate in the error state.
 *)
-Definition Safe (c:cmd ops) :=
- forall st, exists st' l, eval_cmd lFun st c l (Some st').
+Definition Safe lspec (c:cmd ops) :=
+ forall st st' l, eval_cmd lspec st c l st' -> st'<>None.
 
-Definition SafeRestr (P:State -> Prop) (c:cmd ops) :=
- forall st, P st -> exists st' l, eval_cmd lFun st c l (Some st').
-
-(* isto fazia sentido na estratégia de prova para a construção simples!!!
- agora é redundante.
-
-
-
-Definition assertionCmd (c:cmd ops) : bool :=
- match c with
- | Assume e | Assert e => true
- | _ => false
- end.
-
-(** [unsafe] removes all [Assert] and [Assume] instructions from
-   a program. *)
-Fixpoint unsafe (c:cmd ops) : cmd ops :=
- match c with
- | Skip => @Skip ops
- | Assume e => @Skip ops
- | Assert e => @Skip ops
- | Assign x e => Assign x e
- | Seq c1 c2 => if assertionCmd c1
-                then unsafe c2
-                else if assertionCmd c2
-                     then unsafe c1
-                     else Seq (unsafe c1) (unsafe c2)
- | If b c1 c2 => If b (unsafe c1) (unsafe c2)
- | While b c => While b (unsafe c)
- end.
-
-Lemma eval_cmd_unsafe: forall st1 c l st2,
- eval_cmd lFun st1 c l (Some st2) -> eval_cmd lFun st1 (unsafe c) l (Some st2).
-Proof.
-move => st1 c l st2.
-move: {1 3}(Some st2) (Logic.eq_refl (Some st2)) => s Es H.
-elim: H st2 Es => {st1 c l s}
-   [ st st' EqS1
-   | st st' e EqS1 Ee
-   | st st' e EqS1 Ee | st e Ee
-   | st st' x e EqS1 (* stb1 stb2  *)
-   | sta1 sta2 [sta3|] c1 c2 l1 l2 H1 IH1 H2 IH2
-   | sta1 c1 c2 l1 l2 IH
-   | st [st'|] b c1 c2 l1 Eb H1 IH1
-   | st [st'|] b c1 c2 l1 Eb H IH
-   | st st' st'' b c' l1' l2' Eb H1 IH1 H2 IH2
-   | st b c' l' Eb H1 IH 
-   | st st' b c' Eb EqS1] //= st2 [Es]; (discriminate Es|| subst).
-- (* Skip *)
-by apply eval_Skip.
-- (* Assume *)
-by apply eval_Skip.
-- (* Assert *)
-by apply eval_Skip.
-- (* Assign *)
-by apply eval_Assign.
-- (* SeqS *)
-case: (ifP _).
- move: c1 H1 IH1 => [|e|e|? ?|? ?|? ? ?|? ?] //= H1 IH1 _. 
-  move: H1 H2 IH2 => /eval_cmd_AssumeI [Eb /= Es El] H2 IH2.
-  by rewrite El /= Es; apply IH2.
- move: H1 H2 IH2 => /eval_cmd_AssertSI [Eb /= Es El] H2 IH2.
- by rewrite El /= Es; apply IH2.
-move => _; case: (ifP _).
- move: c2 H2 IH2 => [|e|e|? ?|? ?|? ? ?|? ?] //= H2 IH2 _. 
-  move: H2 H1 IH1 => /eval_cmd_AssumeI [Eb /= Es El] H1 IH1.
-  by rewrite El /= -Es cats0; apply IH1.
- move: H2 H1 IH1 => /eval_cmd_AssertSI [Eb /= Es ->] H1 IH1.
- by rewrite /= -Es cats0; apply IH1.
-move => _; apply eval_SeqS with sta2.
- by apply IH1.
-by apply IH2.
-- (* IfT *)
-simpl; apply eval_IfT => //.
-by apply IH1.
-- (* IfF *)
-simpl; apply eval_IfF => //.
-by apply IH.
-- (* WhileT *)
-apply eval_WhileTS with st' => //.
- by apply IH1 => //. 
-by apply IH2.
-- (* WhileF *)
-by apply eval_WhileF.
-Qed.
-*)
 
 (** * Leakage Security (with disclosure of portion of the output state)
 
@@ -1560,11 +1433,12 @@ Qed.
  leak the same information.
 *)
 Definition leakSecure (lowInputs lowOutputs:VarRestr) (c:cmd ops) :=
- forall s1 s2, eqstateR lowInputs s1 s2 ->
-  exists s1' s2' l1 l2,
-   eval_cmd lFun s1 c l1 (Some s1')
-   /\ eval_cmd lFun s2 c l2 (Some s2')
-   /\ (eqstateR lowOutputs s1' s2' -> l1=l2).
+ forall s1 l1 ss1,
+   eval_cmd lFun s1 c l1 ss1 ->
+   exists s1', ss1 = Some s1' /\ forall s2 s2' l2,
+    eqstateR lowInputs s1 s2 ->
+    eval_cmd lFun s2 c l2 (Some s2') ->
+    eqstateR lowOutputs s1' s2' -> l1 = l2.
 
 (** * Leakage Security (with disclosure of portion of the output state)
 

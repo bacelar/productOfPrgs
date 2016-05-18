@@ -345,7 +345,7 @@ by rewrite !E IHe IHargs.
 (* Var *)
 move => v s st1 st2 /=.
 have E: forall st v,
-         eval_lvalue st (Var ops v)
+         eval_lvalue st (Var v)
          = st.1 v by [].
 by rewrite !E.
 (* ArrCell *)
@@ -405,7 +405,7 @@ by rewrite !E IHe IHargs.
 (* Var *)
 move => v s st1 st2 /=.
 have E: forall st v,
-         eval_lvalue st (Var ops v)
+         eval_lvalue st (Var v)
          = st.1 v by [].
 by rewrite !E.
 (* ArrCell *)
