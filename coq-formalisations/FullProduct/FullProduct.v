@@ -79,8 +79,35 @@ Fixpoint productTrf (c: cmd ops) {struct c} : cmd ops :=
              (Seq (selfComp lspec (While b c1)) (ok_upd okSC_expr)))
  end.
 
+Lemma product_imgN: forall st s1 c l1,
+ eval_cmd lspec s1 c l1 None ->
+ exists ll,
+ eval_cmd lspec (joinState (s1,s1,st)) (productTrf c) ll None.
+Proof.
+admit (*
+- não depende de SelfComp
+*).
+Qed.
+
+Lemma product_preimgN: forall s c ll,
+ eval_cmd lspec s (productTrf c) ll None ->
+ (exists l1, eval_cmd lspec (splitState s).1.1 c l1 None)
+ \/ (exists l2, eval_cmd lspec (splitState s).1.2 c l2 None).
+Proof.
+admit (*
+- já depende de SelfComp
+*).
+Qed.
+
 Definition initProduct: cmd ops :=
  Assign ok_lvalue (Const 1).
+
+Lemma initProduct_SeqI: forall st c l st',
+ eval_cmd lspec st (Seq initProduct c) l st' ->
+ eval_cmd lspec (updLValue st (@ok_lvalue ops) 1) c l st'.
+Proof.
+admit.
+Qed.
 
 Fixpoint assumeVarRestr (v: VarRestr) : cmd ops :=
  match v with
@@ -88,12 +115,60 @@ Fixpoint assumeVarRestr (v: VarRestr) : cmd ops :=
  | x::xs => Seq (Assume (Equal (ren_expr false (ValOf (Var x))) (ren_expr true (ValOf (Var x))))) (assumeVarRestr xs)
  end.
 
+Lemma assumeVarRestrP: forall v st l st',
+ eval_cmd lspec st (assumeVarRestr v) l st'
+ <->
+ joinStateEqLow v st /\ l=[::] /\ st'=Some st.
+Proof.
+elim => [|x xs IH] st l st' /=.
+ split.
+  move=> /eval_cmd_SkipI [-> ->]; split; last by split.
+  by rewrite /eqstateR.
+ by move=> [_ [-> ->]]; constructor.
+split.
+ move=> /eval_cmd_SeqI
+         [[-> H]|[s' [l1 [l2 [/eval_cmd_AssumeI [H1 [->] ->] H2 ->]]]]];
+  first by inversion_clear H. 
+ rewrite -> IH in H2; move: {IH} H2 => [H2 [-> ->]].
+ split; last by [].
+ by admit (* simples eqstateR_cons *).
+move => [Hv [-> ->]].
+ rewrite -/([::]++[::]); apply eval_SeqS with st.
+  constructor.
+  by admit (* simples eqstateR_cons *).
+ rewrite IH; split; last by [].
+ by admit (* simples eqstateR_cons *).
+Qed.
+
+Lemma assumeSeq_SeqI: forall v st c l st',
+ eval_cmd lspec st (Seq (assumeVarRestr v) c) l st' ->
+ eval_cmd lspec st c l st' /\ joinStateEqLow v st.
+Proof.
+move=> v st c l st' /eval_cmd_SeqI [[->]|[s' [l1 [l2 [H1 H2 ->]]]]].
+ by rewrite assumeVarRestrP => [[_ [_ H2]]].
+move: H1; rewrite assumeVarRestrP => [[H1 [-> [Es]]]] /=.
+by move: H1; rewrite -Es {Es} => H1; split.
+Qed.
+
 Variable vIN vOUT: VarRestr.
 
 Definition fullProduct (c: cmd ops) : cmd ops :=
- Seq (Seq initProduct (Seq (assumeVarRestr vIN) 
-                           (Seq (productTrf c) (assumeVarRestr vOUT))))
-     (Assert ok_expr).
+ Seq (Seq (Seq initProduct (assumeVarRestr vIN))
+          (productTrf c))
+     (Seq (assumeVarRestr vOUT) (Assert ok_expr)).
+
+Lemma fullProduct_imgN: forall st s1 c l1,
+ eval_cmd lspec s1 c l1 None ->
+ exists ll,
+ eval_cmd lspec (joinState (s1,s1,st)) (fullProduct c) ll None.
+Proof.
+rewrite /fullProduct => st s1 c l1 H.
+admit (*
+apply eval_SeqN.
+rewrite -/([::]++ll); eapply eval_SeqS.
+*).
+Qed.
+
 
 Theorem fullProduct_sound: forall c,
  Safe lspec (fullProduct c) ->
@@ -102,22 +177,12 @@ Proof.
 rewrite /leakSecure => c H s1 l1 ss1 H1.
 move: ss1 H1 => [s1'|] H1; last first.
  move: (H (joinState (s1,s1,trfState0))) => H'.
-  admit (* H1 -> absurd H 
-pq. eval_cmd lspec s1 c l1 None ->
-    eval_cmd lspec (joinState (s1, s1, trfState0)) (fullProduct c) ll None
-*).
+ move/(fullProduct_imgN trfState0): H1 => [ll H1].
+ by move: (H' _ _ H1).
 exists s1'; split => // s2 s2' l2 HIN H2 HOUT.
-admit (* pq prop. de fullProduct *).
+move: {H} (H (joinState (s1,s2,trfState0))) => H.
+admit (* prop. de fullProduct *).
 (*
-
-move: ss2 H2 => [s2'|] H2; last first.
- admit (* H2 -> absurd H 
-pq. eval_cmd lspec s2 c l2 None ->
-    eval_cmd lspec (joinState (s1, s2, trfState0)) (fullProduct c) ll None
-*).
-exists s1', s2'; split => //.
-split => // HOUT.
-(* 
  HIN : eqstateR vIN s1 s2
  H1 : eval_cmd lspec s1 c l1 (Some s1')
  H2 : eval_cmd lspec s2 c l2 (Some s2')
@@ -128,10 +193,7 @@ split => // HOUT.
                 (fullProduct' c) ll (Some s')
  /\ eval_expr s' ok_expr != 0 -> l1=l2
 *)
-admit.
-*)
 Qed.
-
 
 Theorem fullProduct_complete: forall c,
  leakSecure lspec vIN vOUT c -> 
@@ -139,29 +201,41 @@ Theorem fullProduct_complete: forall c,
 Proof.
 rewrite /Safe /leakSecure => c H st.
 move => [st'|] l H' => //.
- (* H' -> !assertOK \/ eval_cmd lspec st (fullProduct' c) l None
-   (1) -> absurd H
-   (2) -> eval_cmd lspec s1 c l1 None \/ eval_cmd lspec s2 c l2 None
-   (3,4) -> absurd H
- *)
-inversion_clear H'.
- inversion_clear H1.
- inversion_clear H0.
- inversion_clear H3.
- inversion_clear H4.
-admit (* pq. eval productTrf <> None -> eval c1,c2 <> None
-e logo H contradiz H2
-*).
-inversion_clear H0; last first.
- admit (* initProduct nunca falha *).
-inversion_clear H2; last first.
- admit (* assume nunca dá None...  *).
-inversion_clear H3. 
- admit (* assume nunca dá None... *).
-(* se eval productTrf = None -> :
-    - eval c1 = None \/ eval c2 = None
-    - eqVIN s1 s2
-   mas então H (com a permissa que der None) conduz a absurdo...
+move: H' => /eval_cmd_SeqNI [H'| [ss' [l1 [l2 [H1 H2 Hll]]]]].
+ move: H'=> /eval_cmd_SeqNI [/initProduct_SeqI| [ss' [l1 [l2 [H1 H2 Hll]]]]].
+  by rewrite assumeVarRestrP => [[_ [_ H']]].
+ move: H1 => /eval_cmd_SeqSI [s1' [l1' [l2' [H1' H2' Hll']]]].
+ move: H1' => /eval_cmd_AssignI [[H1a] H1b].
+ move: H2'; rewrite assumeVarRestrP => [[H2a [H2b [H2c]]] _]; subst.
+ move: H2 => /product_preimgN [[l1 H1]|[l2' H2]].
+  by move: {H H1} (H _ _ _ H1) => [ss [Hss _]].
+ by move: {H H2} (H _ _ _ H2) => [ss [Hss _]].
+move: H1 => /eval_cmd_SeqSI [s1' [l1' [l2' [H1' H2' Hll']]]].
+move: H1' => /eval_cmd_SeqSI [s1'' [l1'' [l2'' [H1'' H2'' Hll'']]]].
+move: H1'' => /eval_cmd_AssignI [[H1a] H1b].
+move: H2''; rewrite assumeVarRestrP => [[H2a [H2b [H2c]]] _]; subst.
+move: H2 => /assumeSeq_SeqI [/eval_cmd_AssertNI [Hnok _] Hout].
+move/negP: Hnok; apply.
+(* Esta é a propriedade principal do produto!.
+
+  H : forall (s1 : State) (l1 : Leakage) (ss1 : option State),
+      eval_cmd lspec s1 c l1 ss1 ->
+      exists s1' : State,
+        ss1 = Some s1' /\
+        (forall (s2 s2' : State) (l2 : Leakage),
+         eqstateR vIN s1 s2 ->
+         eval_cmd lspec s2 c l2 (Some s2') ->
+         eqstateR vOUT s1' s2' -> l1 = l2)
+  st : State
+  ss' : State
+  l2 : Leakage
+  l2' : Leakage
+  H2a : joinStateEqLow vIN (updVar st 1%positive (eval_expr st (Const 1)))
+  H2' : eval_cmd lspec (updVar st 1%positive (eval_expr st (Const 1)))
+          (productTrf c) l2' (Some ss')
+  Hout : joinStateEqLow vOUT ss'
+  ============================
+   isTrue_expr ss' ok_expr
 *)
 admit.
 Qed.
