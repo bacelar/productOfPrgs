@@ -170,7 +170,30 @@ rewrite -/([::]++ll); eapply eval_SeqS.
 Qed.
 
 (* prop1 de fullProduct *)
-Lemma fullProduct_sound': forall vIN vOUT c s1 s2 l1 l2 s1' s2',
+Lemma product_sound: forall c s1 s2 st l1 l2 s1' s2',
+  eval_cmd lspec s1 c l1 (Some s1') ->
+  eval_cmd lspec s2 c l2 (Some s2') ->
+  exists st' ll,
+   eval_cmd lspec (updLValue (joinState (s1, s2, st)) (@ok_lvalue ops) 1)
+            (productTrf c)
+            ll (Some (joinState (s1',s2',st')))
+   /\ (isTrue_expr (joinState (s1',s2',st')) (@ok_expr ops) <-> l1=l2).
+Proof.
+admit.
+Qed.
+
+(* prop2 de fullProduct *)
+Lemma product_complete: forall c s ll s',
+  eval_cmd lspec s (productTrf c) ll (Some s') ->
+  exists l1 l2,
+   eval_cmd lspec (splitState s).1.1 c l1 (Some (splitState s').1.1)
+   /\ eval_cmd lspec (splitState s).1.2 c l2 (Some (splitState s').1.2)
+   /\ (isTrue_expr s (@ok_expr ops) -> l1=l2 -> isTrue_expr s' (@ok_expr ops)).
+Proof.
+admit.
+Qed.
+
+Lemma fullProduct_sound': forall c s1 s2 l1 l2 s1' s2',
   eqstateR vIN s1 s2 ->
   eval_cmd lspec s1 c l1 (Some s1') ->
   eval_cmd lspec s2 c l2 (Some s2') ->
@@ -180,32 +203,39 @@ Lemma fullProduct_sound': forall vIN vOUT c s1 s2 l1 l2 s1' s2',
             ll ss
    /\ (ss <> None -> l1=l2).
 Proof.
-admit.
+move => c s1 s2 l1 l2 s1' s2' Hin H1 H2 Hout.
+move: (product_sound trfState0 H1 H2) => [st' [ll [HH1 HH2]]].
+have HH: eval_cmd lspec (joinState (s1,s2,trfState0))
+                  (Seq (Seq initProduct (assumeVarRestr vIN)) (productTrf c))
+                  (((leak_expr lspec (joinState (s1, s2, trfState0))
+                               (ValOf ok_lvalue)
+                    ++leak_expr lspec (joinState (s1, s2, trfState0))
+                                 (Const 1))++[::])++ll)
+                  (Some (joinState (s1', s2', st'))).
+ apply: eval_SeqS; last by apply HH1.
+ apply eval_SeqS with (updLValue (joinState (s1,s2,trfState0)) (@ok_lvalue ops)1).
+  constructor.
+by [].
+ rewrite assumeVarRestrP; split => //. 
+case E: (isTrue_expr (joinState (s1', s2', st')) (@ok_expr ops)).
+ exists (Some (joinState (s1', s2', st'))).
+ exists ((((leak_expr lspec (joinState (s1, s2, trfState0)) (ValOf ok_lvalue)
+         ++leak_expr lspec (joinState (s1, s2, trfState0)) (Const 1))++[::])++ll)++[::]).
+ split; last first.
+  by move=> _; rewrite -HH2.
+ apply eval_SeqS with (joinState (s1', s2', st')); first by [].
+ rewrite -/([::]++[::]); apply eval_SeqS with (joinState (s1', s2', st')).
+  by rewrite assumeVarRestrP /joinStateEqLow; split.
+ by constructor.
+exists None.
+exists ((((leak_expr lspec (joinState (s1, s2, trfState0)) (ValOf ok_lvalue)
+         ++leak_expr lspec (joinState (s1, s2, trfState0)) (Const 1))++[::])++ll)++([::]++[::])).
+split => //.
+apply eval_SeqS with (joinState (s1', s2', st')); first by [].
+apply eval_SeqS with (joinState (s1', s2', st')); last first.
+ by constructor; rewrite E. 
+by rewrite assumeVarRestrP.
 Qed.
-
-(* prop2 de productTrf 
-(* Esta é a propriedade principal do produto!.
-
-  H : forall (s1 : State) (l1 : Leakage) (ss1 : option State),
-      eval_cmd lspec s1 c l1 ss1 ->
-      exists s1' : State,
-        ss1 = Some s1' /\
-        (forall (s2 s2' : State) (l2 : Leakage),
-         eqstateR vIN s1 s2 ->
-         eval_cmd lspec s2 c l2 (Some s2') ->
-         eqstateR vOUT s1' s2' -> l1 = l2)
-  st : State
-  ss' : State
-  l2 : Leakage
-  l2' : Leakage
-  H2a : joinStateEqLow vIN (updVar st 1%positive (eval_expr st (Const 1)))
-  H2' : eval_cmd lspec (updVar st 1%positive (eval_expr st (Const 1)))
-          (productTrf c) l2' (Some ss')
-  Hout : joinStateEqLow vOUT ss'
-  ============================
-   isTrue_expr ss' ok_expr
-*)
-*)
 
 Theorem fullProduct_sound: forall c,
  Safe lspec (fullProduct c) ->
@@ -243,27 +273,9 @@ move: H1'' => /eval_cmd_AssignI [[H1a] H1b].
 move: H2''; rewrite assumeVarRestrP => [[H2a [H2b [H2c]]] _]; subst.
 move: H2 => /assumeSeq_SeqI [/eval_cmd_AssertNI [Hnok _] Hout].
 move/negP: Hnok; apply.
-(* Esta é a propriedade principal do produto!.
-
-  H : forall (s1 : State) (l1 : Leakage) (ss1 : option State),
-      eval_cmd lspec s1 c l1 ss1 ->
-      exists s1' : State,
-        ss1 = Some s1' /\
-        (forall (s2 s2' : State) (l2 : Leakage),
-         eqstateR vIN s1 s2 ->
-         eval_cmd lspec s2 c l2 (Some s2') ->
-         eqstateR vOUT s1' s2' -> l1 = l2)
-  st : State
-  ss' : State
-  l2 : Leakage
-  l2' : Leakage
-  H2a : joinStateEqLow vIN (updVar st 1%positive (eval_expr st (Const 1)))
-  H2' : eval_cmd lspec (updVar st 1%positive (eval_expr st (Const 1)))
-          (productTrf c) l2' (Some ss')
-  Hout : joinStateEqLow vOUT ss'
-  ============================
-   isTrue_expr ss' ok_expr
-*)
-admit.
+move: {H2'} (product_complete H2') => [ll1 [ll2 [HH1 [HH2 HH]]]].
+apply HH => //.
+move: (H _ _ _ HH1) => [ss1' [[<-] HH1']] {ss1'}.
+by apply HH1' with (splitState (updVar st 1%positive (eval_expr st (@Const ops 1)))).1.2 (splitState ss').1.2.
 Qed.
 
