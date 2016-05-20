@@ -99,6 +99,30 @@ admit (*
 *).
 Qed.
 
+(* prop1 de fullProduct *)
+Lemma product_sound: forall c s1 s2 st l1 l2 s1' s2',
+  eval_cmd lspec s1 c l1 (Some s1') ->
+  eval_cmd lspec s2 c l2 (Some s2') ->
+  exists st' ll,
+   eval_cmd lspec (updLValue (joinState (s1, s2, st)) (@ok_lvalue ops) 1)
+            (productTrf c)
+            ll (Some (joinState (s1',s2',st')))
+   /\ (isTrue_expr (joinState (s1',s2',st')) (@ok_expr ops) <-> l1=l2).
+Proof.
+admit.
+Qed.
+
+(* prop2 de fullProduct *)
+Lemma product_complete: forall c s ll s',
+  eval_cmd lspec s (productTrf c) ll (Some s') ->
+  exists l1 l2,
+   eval_cmd lspec (splitState s).1.1 c l1 (Some (splitState s').1.1)
+   /\ eval_cmd lspec (splitState s).1.2 c l2 (Some (splitState s').1.2)
+   /\ (isTrue_expr s (@ok_expr ops) -> l1=l2 -> isTrue_expr s' (@ok_expr ops)).
+Proof.
+admit.
+Qed.
+
 Definition initProduct: cmd ops :=
  Assign ok_lvalue (Const 1).
 
@@ -163,34 +187,20 @@ Lemma fullProduct_imgN: forall st s1 c l1,
  eval_cmd lspec (joinState (s1,s1,st)) (fullProduct c) ll None.
 Proof.
 rewrite /fullProduct => st s1 c l1 H.
-admit (*
+set st' := (updLValue (joinState (s1, s1, st)) (@ok_lvalue ops) 1).
+move: (product_imgN (splitState st').2 H) => [ll Hll].
+exists ((((leak_expr lspec (joinState (s1, s1, st)) (ValOf ok_lvalue)
+         ++leak_expr lspec (joinState (s1, s1, st)) (Const 1))++[::])++ll)).
 apply eval_SeqN.
-rewrite -/([::]++ll); eapply eval_SeqS.
-*).
-Qed.
-
-(* prop1 de fullProduct *)
-Lemma product_sound: forall c s1 s2 st l1 l2 s1' s2',
-  eval_cmd lspec s1 c l1 (Some s1') ->
-  eval_cmd lspec s2 c l2 (Some s2') ->
-  exists st' ll,
-   eval_cmd lspec (updLValue (joinState (s1, s2, st)) (@ok_lvalue ops) 1)
-            (productTrf c)
-            ll (Some (joinState (s1',s2',st')))
-   /\ (isTrue_expr (joinState (s1',s2',st')) (@ok_expr ops) <-> l1=l2).
-Proof.
-admit.
-Qed.
-
-(* prop2 de fullProduct *)
-Lemma product_complete: forall c s ll s',
-  eval_cmd lspec s (productTrf c) ll (Some s') ->
-  exists l1 l2,
-   eval_cmd lspec (splitState s).1.1 c l1 (Some (splitState s').1.1)
-   /\ eval_cmd lspec (splitState s).1.2 c l2 (Some (splitState s').1.2)
-   /\ (isTrue_expr s (@ok_expr ops) -> l1=l2 -> isTrue_expr s' (@ok_expr ops)).
-Proof.
-admit.
+eapply eval_SeqS.
+ eapply eval_SeqS.
+ constructor; first by reflexivity.
+ rewrite assumeVarRestrP; split => //.
+have HS: eqstate (joinState (s1, s1, (splitState st').2))
+                 (updLValue (joinState (s1, s1, st)) (@ok_lvalue ops) 1).
+ move => id /=; split => //.
+ by move: id => [x|x|].
+by move: (eval_cmd_eqstate HS Hll) => [[st2'|] [HH1 //= HH2]].
 Qed.
 
 Lemma fullProduct_sound': forall c s1 s2 l1 l2 s1' s2',
