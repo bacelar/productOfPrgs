@@ -249,6 +249,17 @@ move: {EqS} (EqS xH) => [/eqP H1 H2]; split => // i.
 by move: (H2 i) => /eqP ->.
 Qed.
 
+Lemma joinSplitState: forall s,
+ eqstate s
+         (joinState ((splitState s).1.1,(splitState s).1.2,(splitState s).2)).
+Proof.
+move=> s.
+have ->: ((splitState s).1.1, (splitState s).1.2, (splitState s).2)
+         = splitState s.
+ by case: (splitState s) => [[s11 s12] s2].
+by rewrite join_splitState.
+Qed.
+
 Variable ops: opSig.
 
 Fixpoint ren_expr side (e: expr ops) : expr ops :=

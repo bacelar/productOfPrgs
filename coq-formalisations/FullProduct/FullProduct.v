@@ -28,32 +28,35 @@ Lemma isTrue_EqLeak: forall st st1 st2 e,
  isTrue_expr (joinState (st1,st2,st)) (EqLeak (expr_i1 e) (expr_i2 e))
  <-> leak_expr (preleak lspec) st1 e = leak_expr (preleak lspec) st2 e.
 Proof.
-admit (*
-move=> st1 st2 e;
-rewrite isTrue_EqSeqExpr /leak_expr !preleak_ren -map_comp.
-have ->:[seq eval_expr (joinState st1 st2) (ren_expr id_i1 x)
+move=> st st1 st2 e.
+rewrite /EqLeak /= isTrue_EqSeqExpr /leak_expr !preleak_ren -map_comp.
+have ->:[seq eval_expr (joinState (st1,st2,st)) (ren_expr false x)
         | x <- preleak lspec e] = [seq eval_expr st1 x | x <- preleak lspec e].
  by apply eq_map => x; rewrite eval_expr_join_i1.
 rewrite -map_comp.
-have ->:[seq eval_expr (joinState st1 st2) (ren_expr id_i2 x)
+have ->:[seq eval_expr (joinState (st1,st2,st)) (ren_expr true x)
         | x <- preleak lspec e] = [seq eval_expr st2 x | x <- preleak lspec e].
  by apply eq_map => x; rewrite eval_expr_join_i2.
+(*
 have ->: [seq inr (eval_expr st1 e0) | e0 <- preleak lspec e] =
          map (@inr bool Z) [seq eval_expr st1 x | x <- preleak lspec e] .
  by rewrite map_comp.
 have ->: [seq inr (eval_expr st2 e0) | e0 <- preleak lspec e] =
          map (@inr bool Z) [seq eval_expr st2 x | x <- preleak lspec e] .
  by rewrite map_comp.
+*)
 split => H; first by rewrite H.
+apply H.
+(*
 have inr_inj: injective (@inr bool Z) by move=> x1 x2 [->].
 by apply (inj_map inr_inj).
-*).
+*)
 Qed.
 
 Definition assertEqLeak (e: expr ops): cmd ops :=
- Assert (EqLeak (ren_expr false e) (ren_expr true e)).
+ ok_upd (EqLeak (ren_expr false e) (ren_expr true e)).
 Definition assertEqLeakTest (e: expr ops): cmd ops :=
- Assert (And (Equal (IsTrue (ren_expr false e)) (IsTrue (ren_expr true e)))
+ ok_upd (And (Equal (IsTrue (ren_expr false e)) (IsTrue (ren_expr true e)))
              (EqLeak (ren_expr false e) (ren_expr true e))).
 
 
@@ -79,27 +82,27 @@ Fixpoint productTrf (c: cmd ops) {struct c} : cmd ops :=
              (Seq (selfComp lspec (While b c1)) (ok_upd okSC_expr)))
  end.
 
-Lemma product_imgN: forall st s1 c l1,
- eval_cmd lspec s1 c l1 None ->
- exists ll,
- eval_cmd lspec (joinState (s1,s1,st)) (productTrf c) ll None.
-Proof.
-admit (*
-- não depende de SelfComp
-*).
-Qed.
-
-Lemma product_preimgN: forall s c ll,
- eval_cmd lspec s (productTrf c) ll None ->
- (exists l1, eval_cmd lspec (splitState s).1.1 c l1 None)
- \/ (exists l2, eval_cmd lspec (splitState s).1.2 c l2 None).
-Proof.
-admit (*
-- já depende de SelfComp
-*).
-Qed.
-
 (* prop1 de fullProduct *)
+Lemma product_sound': forall n c s1 s2 st l1 l2 s1' s2',
+  feval_cmd lspec n c s1 = Some (Some s1',l1) ->
+  feval_cmd lspec n c s2 = Some (Some s2',l2) ->
+  exists st' ll,
+   eval_cmd lspec (updLValue (joinState (s1, s2, st)) (@ok_lvalue ops) 1)
+            (productTrf c)
+            ll (Some (joinState (s1',s2',st')))
+   /\ (isTrue_expr (joinState (s1',s2',st')) (@ok_expr ops) <-> l1=l2).
+Proof.
+elim => //=.
+move => n IH [|e|e|x e|c1 c2|b c1 c2|b c] s1 s2 st l1 l2 s1' s2' H1 H2.
+- admit.
+- admit.
+- admit.
+- admit.
+- admit.
+- admit.
+- admit.
+Qed.
+
 Lemma product_sound: forall c s1 s2 st l1 l2 s1' s2',
   eval_cmd lspec s1 c l1 (Some s1') ->
   eval_cmd lspec s2 c l2 (Some s2') ->
@@ -109,18 +112,129 @@ Lemma product_sound: forall c s1 s2 st l1 l2 s1' s2',
             ll (Some (joinState (s1',s2',st')))
    /\ (isTrue_expr (joinState (s1',s2',st')) (@ok_expr ops) <-> l1=l2).
 Proof.
-admit.
+move=> c s1 s2 st l1 l2 s1' s2'
+       /eval_cmd_feval [n1 H1] /eval_cmd_feval [n2 H2].
+apply product_sound' with (maxn n1 n2).
+ apply feval_cmd_weak with n1 => //.
+ by apply leq_maxl.
+apply feval_cmd_weak with n2 => //.
+by apply leq_maxr.
 Qed.
 
 (* prop2 de fullProduct *)
 Lemma product_complete: forall c s ll s',
   eval_cmd lspec s (productTrf c) ll (Some s') ->
   exists l1 l2,
-   eval_cmd lspec (splitState s).1.1 c l1 (Some (splitState s').1.1)
-   /\ eval_cmd lspec (splitState s).1.2 c l2 (Some (splitState s').1.2)
-   /\ (isTrue_expr s (@ok_expr ops) -> l1=l2 -> isTrue_expr s' (@ok_expr ops)).
+   [/\ eval_cmd lspec (splitState s).1.1 c l1 (Some (splitState s').1.1),
+       eval_cmd lspec (splitState s).1.2 c l2 (Some (splitState s').1.2)
+    & isTrue_expr s (@ok_expr ops) -> l1=l2 -> isTrue_expr s' (@ok_expr ops)].
 Proof.
 admit.
+Qed.
+
+Lemma product_imgN: forall st s1 c l1,
+ eval_cmd lspec s1 c l1 None ->
+ exists ll,
+ eval_cmd lspec (joinState (s1,s1,st)) (productTrf c) ll None.
+Proof.
+move=> st s1 c l1 /eval_cmd_feval [n H].
+elim: n c s1 l1 st H => //=.
+move => n IH [|e|e|x e|c1 c2|b c1 c2|b c] s1 l1 st H; try discriminate H.
+- by move: H; case: (ifP _).
+- move: H; case: (ifP _) => H //.
+  move => _; exists [::]; constructor; constructor.
+  move: H; rewrite /isTrue_expr eval_expr_join_i1.
+  by move=> H; apply/negPf.
+- move: H.
+  move: {2 3}(feval_cmd lspec n c1 s1)
+        (Logic.eq_refl (feval_cmd lspec n c1 s1)) => [[[s'|] l']|] E1 //.
+   move: {2 3}(feval_cmd lspec n c2 s')
+         (Logic.eq_refl (feval_cmd lspec n c2 s')) => [[[s''|] l'']|] E2 //.
+   by admit.
+  move=> [El']; move: E1; rewrite El' {El'} => E1 /=.
+  elim (IH _ _ _ st E1) => ll; exists ll.
+  by apply eval_SeqN.
+- move: H; case: (ifP _) => Eb.
+   move: {2 3}(feval_cmd lspec n c1 s1)
+         (Logic.eq_refl (feval_cmd lspec n c1 s1)) => [[[s'|] l']|] E1 //.
+   by admit.
+  move: {2 3}(feval_cmd lspec n c2 s1)
+        (Logic.eq_refl (feval_cmd lspec n c2 s1)) => [[[s'|] l']|] E1 //.
+  by admit.
+- move: H; case: (ifP _) => Eb //.
+  move: {2 3}(feval_cmd lspec n (Seq c (While b c)) s1)
+        (Logic.eq_refl (feval_cmd lspec n (Seq c (While b c)) s1))
+        => [[[s'|] l']|] E1 //.
+  by admit.
+Qed.
+
+Lemma product_preimgN: forall s c ll,
+ eval_cmd lspec s (productTrf c) ll None ->
+ (exists l1, eval_cmd lspec (splitState s).1.1 c l1 None)
+ \/ (exists l2, eval_cmd lspec (splitState s).1.2 c l2 None).
+Proof.
+move=> s c l /eval_cmd_feval [n H].
+elim: n c s l H => //.
+move => n IH [|e|e|x e|c1 c2|b c1 c2|b c] s l H; try discriminate H.
+- rewrite /= in H; move: {2 3}(feval_cmd lspec n (Assume _) s)
+        (Logic.eq_refl (feval_cmd lspec n (Assume (ren_expr false e)) s)) H
+        => [[[s'|] l']|] H1 //.
+   move: {2 3}(feval_cmd lspec n (Assume _) s')
+         (Logic.eq_refl (feval_cmd lspec n (Assume (ren_expr true e)) s'))
+         => [[[s''|] l'']|] H2 // [E2].
+   by move/feval_cmd_eval: H2 => /eval_cmd_AssumeI [].
+  move=> [E1].
+  by move/feval_cmd_eval: H1 => /eval_cmd_AssumeI [].
+- rewrite /= in H; move: {2 3}(feval_cmd lspec n (Assert _) s)
+        (Logic.eq_refl (feval_cmd lspec n (Assert (ren_expr false e)) s)) H
+        => [[[s'|] l']|] H1 //.
+   move: {2 3}(feval_cmd lspec n (Assert _) s')
+         (Logic.eq_refl (feval_cmd lspec n (Assert (ren_expr true e)) s'))
+         => [[[s''|] l'']|] H2 // [E2].
+    move/feval_cmd_eval: H2 => /eval_cmd_AssertNI [] // Hb2 El2.
+    move/feval_cmd_eval: H1 => /eval_cmd_AssertSI [] // Hb1 <- El1.
+    right; exists [::]; constructor.
+    by move: Hb2; rewrite /isTrue_expr {1}(joinSplitState s') eval_expr_join_i2.
+   move=> [E1].
+   move/feval_cmd_eval: H1 => /eval_cmd_AssertNI [] Hb1 El1.
+   left; exists [::]; constructor.
+   by move: Hb1; rewrite /isTrue_expr {1}(joinSplitState s) eval_expr_join_i1.
+- admit.
+- rewrite /= in H.
+  move: {2 3}(feval_cmd lspec n _ s)
+        (Logic.eq_refl (feval_cmd lspec n (productTrf c1) s)) H
+        => [[[s'|] l']|] H1 //.
+   move: {2 3}(feval_cmd lspec n _ s')
+         (Logic.eq_refl (feval_cmd lspec n (productTrf c2) s'))
+         => [[[s''|] l'']|] H2 // [E2].
+   move/feval_cmd_eval: H1 => /product_complete [l1 [l2 [H11 H12 H13]]].
+   move: {IH} (IH _ _ _ H2) => [[ll IH]|[ll IH]].
+    by left; exists (l1++ll); apply eval_SeqS with (splitState s').1.1.
+   by right; exists (l2++ll); apply eval_SeqS with (splitState s').1.2.
+  move: {IH} (IH _ _ _ H1) => [[ll IH]|[ll IH]] [El].
+   by left; exists ll; apply eval_SeqN.
+  by right; exists ll; apply eval_SeqN.
+- rewrite /= in H.
+  move: {2 3}(feval_cmd lspec n _ s)
+        (Logic.eq_refl (feval_cmd lspec n (assertEqLeakTest b) s)) H
+        => [[[s'|] l']|] H1 //; last first.
+   move => [El]; subst.
+   admit (* assertEqLeak != None *).
+  have ->: s' = updLValue s (@ok_lvalue ops) (eval_expr s b) (* it is NOT b *).
+   admit (* invert feval_assertEqLeakTest *).
+  move: {2 3}(feval_cmd lspec n _ _)
+        (Logic.eq_refl (feval_cmd lspec n (If ok_expr (If (ren_expr false b) (productTrf c1) (productTrf c2))
+          (Seq (selfComp lspec (If b c1 c2)) (ok_upd okSC_expr))) (updLValue s (@ok_lvalue ops) (eval_expr s b))))
+        => [[[s''|] l'']|] H2 // [E2].
+  move/feval_cmd_eval: H2 => /eval_cmd_IfI [ll].
+  case: (ifP _) => Hok.
+   (* Caso standard... *) admit.
+  (* Caso SelfComp... 
+    eval_cmd lspec s (selfComp lspec c) ll None -> 
+    (exists l1, eval_cmd lspec (splitState s).1.1 c l1 None)
+    \/ (exists l2, eval_cmd lspec (splitState s).1.2 c l2 None) *)
+  admit.
+- admit.
 Qed.
 
 Definition initProduct: cmd ops :=

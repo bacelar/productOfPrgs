@@ -1114,10 +1114,10 @@ admit.
 Qed.
 
 
-Lemma eval_cmd_eqstate: forall c st1 l1 st1' st2 st2', 
+Lemma eval_cmd_eqstate: forall c st1 l1 st1' st2,
   eqstate st1 st2 ->
   eval_cmd st1 c l1 st1' -> 
-  exists st2, eval_cmd st2 c l1 st2' /\  eqstateOpt st1' st2'.
+  exists st2', eval_cmd st2 c l1 st2' /\  eqstateOpt st1' st2'.
 Proof.
 admit
 (*

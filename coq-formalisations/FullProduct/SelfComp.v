@@ -262,23 +262,85 @@ move => n IH s1 s1' l1 [|e|e|x e|c1 c2|b c1 c2|b c] /=.
 *).
 Qed.
 
-Theorem selfComp_sound:
- forall (c:cmd ops) ts ts' (s1 s1' s2 s2' s': State) l1 l2 l',
- eval_cmd (lFun lspec) s1 c l1 (Some s1') ->
- eval_cmd (lFun lspec) s2 c l2 (Some s2') ->
- eval_cmd (lFun lspec) (joinState (s1,s2,ts)) (selfComp c) l'
-                       (Some (joinState (s1',s2',ts')))
- /\ l1==l2 = (eval_expr (joinState (s1',s2',ts')) okSC_expr != 0).
-Admitted.
+Theorem selfComp_sound1':
+ forall n (c:cmd ops) ts (s1 s1' s2 s2': State) l1 l2,
+ feval_cmd lspec n c s1 = Some (Some s1',l1) ->
+ feval_cmd lspec n c s2 = Some (Some s2',l2) ->
+ exists s' l',
+  [/\ eval_cmd lspec (joinState (s1,s2,ts)) (selfComp c) l'
+                     (Some s'),
+      eqstate s1' (splitState s').1.1
+    & eqstate s2' (splitState s').1.2 ].
+Proof.
+elim => //= n IH.
+move => [|e|e|x e|c1 c2|b c1 c2|b c] ts s1 s1' s2 s2' l1 l2 /=.
+- move=> [<- El1] [<- El2]; rewrite /selfComp.
+  admit.
+- admit.
+- admit.
+- admit.
+- admit.
+- admit.
+- admit.
+Qed.
+
+Theorem selfComp_sound1:
+ forall (c:cmd ops) ts (s1 s1' s2 s2': State) l1 l2,
+ eval_cmd lspec s1 c l1 (Some s1') ->
+ eval_cmd lspec s2 c l2 (Some s2') ->
+ exists s' l',
+  [/\ eval_cmd lspec (joinState (s1,s2,ts)) (selfComp c) l'
+                     (Some s'),
+      eqstate s1' (splitState s').1.1
+    & eqstate s2' (splitState s').1.2 ].
+Proof.
+rewrite /selfComp => c ts s1 s1' s2 s2' l1 l2
+ /eval_cmd_feval [n1 H1] /eval_cmd_feval [n2 H2].
+apply selfComp_sound1' with (maxn n1 n2) l1 l2.
+ apply feval_cmd_weak with n1 => //.
+ by apply leq_maxl.
+apply feval_cmd_weak with n2 => //.
+by apply leq_maxr.
+Qed.
 
 Theorem selfComp_complete:
  forall (c:cmd ops) ts1 (s11 s12 s2: State) l1 l2 l',
- eval_cmd (lFun lspec) (joinState (s11,s12,ts1)) (selfComp c) l'
-                       (Some s2) ->
- eval_cmd (lFun lspec) s11 c l1 (Some (splitState s2).1.1) /\
- eval_cmd (lFun lspec) s12 c l2 (Some (splitState s2).1.2) /\
- l1==l2 = (eval_expr s2 okSC_expr != 0).
+ eval_cmd lspec (joinState (s11,s12,ts1)) (selfComp c) l' (Some s2) ->
+ [/\ eval_cmd lspec s11 c l1 (Some (splitState s2).1.1),
+     eval_cmd lspec s12 c l2 (Some (splitState s2).1.2)
+   & l1==l2 = (eval_expr s2 okSC_expr != 0)].
 Admitted.
+
+Theorem selfComp_sound2:
+ forall (c:cmd ops) ts ts' (s1 s1' s2 s2': State) l1 l2 l',
+ eval_cmd lspec s1 c l1 (Some s1') ->
+ eval_cmd lspec s2 c l2 (Some s2') ->
+ eval_cmd lspec (joinState (s1,s2,ts)) (selfComp c) l'
+                (Some (joinState (s1',s2',ts'))) ->
+ l1==l2 = (eval_expr (joinState (s1',s2',ts')) okSC_expr != 0).
+Proof.
+move=> c ts ts' s1 s1' s2 s2' l1 l2 ll H1 H2
+ /eval_cmd_feval [n H].
+move: (selfComp_sound1 ts H1 H2) => [s' [l' [HH Es1 Es2]]].
+move: (HH).
+apply selfComp_complete with (l1:=l1) (l2:=l2) in HH.
+move: HH => [HH1 HH2 HH3] HH.
+admit (* determinism *).
+Qed.
+
+Theorem selfComp_imgN:
+ forall (c:cmd ops) s ll,
+   eval_cmd lspec s (selfComp c) ll None -> 
+   (exists l1, eval_cmd lspec (splitState s).1.1 c l1 None)
+   \/ (exists l2, eval_cmd lspec (splitState s).1.2 c l2 None).
+Proof.
+rewrite /selfComp => c s ll 
+ /eval_cmd_SeqNI [/eval_cmd_SeqNI [H|H]|[s' [l1 [l2 [H1 H2]]]]];
+ last first.
+  admit (* absurd H2 *).
+ admit (* main case *).
+admit (* absurd H *).
+Qed.
 
 End SCtrf.
 
