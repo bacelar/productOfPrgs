@@ -1,2 +1,1 @@
-# jcbacelar
-Personal Repository
+# Product of Programs Construction
