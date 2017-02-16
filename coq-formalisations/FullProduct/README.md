@@ -1,4 +1,4 @@
-# Formalisation of the Product Construction
+# Formalisation of the Full Product Construction
 
 
 ## Requirements:
